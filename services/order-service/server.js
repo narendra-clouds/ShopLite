@@ -1,23 +1,12 @@
 const express = require("express");
 
 const app = express();
-
 const PORT = 3003;
 const NOTIFICATION_SERVICE_URL = "http://localhost:3004";
 
 app.use(express.json());
 
-
-// ==========================================
-// TEMPORARY IN-MEMORY ORDERS
-// ==========================================
-
 const orders = [];
-
-
-// ==========================================
-// HEALTH CHECK
-// ==========================================
 
 app.get("/health", (req, res) => {
   res.json({
@@ -27,169 +16,90 @@ app.get("/health", (req, res) => {
   });
 });
 
-
-// ==========================================
-// GET ALL ORDERS
-// ==========================================
-
 app.get("/orders", (req, res) => {
-  res.json({
-    orders
-  });
+  const requestedUserId = req.query.userId;
+  const result = requestedUserId
+    ? orders.filter((order) => String(order.userId) === String(requestedUserId))
+    : orders;
+
+  res.json({ orders: result });
 });
 
-
-// ==========================================
-// CREATE ORDER
-// ==========================================
-
 app.post("/orders", async (req, res) => {
-
-  const { userId, items } = req.body;
-
-
-  // ------------------------------------------
-  // Validate user
-  // ------------------------------------------
+  const { userId, items, deliveryAddress, location } = req.body;
 
   if (!userId) {
-    return res.status(400).json({
-      message: "userId is required"
-    });
+    return res.status(400).json({ message: "userId is required" });
   }
 
-
-  // ------------------------------------------
-  // Validate items
-  // ------------------------------------------
-
-  if (!items || !Array.isArray(items) || items.length === 0) {
+  if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({
       message: "At least one order item is required"
     });
   }
 
-
-  // ------------------------------------------
-  // Validate every item
-  // ------------------------------------------
-
   for (const item of items) {
-
-    if (!item.productId || !item.quantity) {
+    if (!item.productId || !Number.isInteger(Number(item.quantity)) || Number(item.quantity) <= 0) {
       return res.status(400).json({
-        message: "Each item must contain productId and quantity"
+        message: "Each item must contain a valid productId and positive integer quantity"
       });
     }
-
-    if (item.quantity <= 0) {
-      return res.status(400).json({
-        message: "Quantity must be greater than 0"
-      });
-    }
-
   }
 
-
-  // ------------------------------------------
-  // Create order
-  // ------------------------------------------
+  const requiredAddressFields = ["fullName", "phone", "address", "city", "state", "pincode"];
+  if (
+    !deliveryAddress ||
+    requiredAddressFields.some(
+      (field) => !String(deliveryAddress[field] ?? "").trim()
+    )
+  ) {
+    return res.status(400).json({
+      message: "A complete delivery address is required"
+    });
+  }
 
   const newOrder = {
-
     id: orders.length + 1,
-
     userId,
-
     items: items.map((item) => ({
       productId: item.productId,
-      quantity: item.quantity
+      quantity: Number(item.quantity)
     })),
-
+    deliveryAddress,
+    location: location || null,
     status: "PLACED",
-
     createdAt: new Date().toISOString()
-
   };
-
-
-  // Save order
 
   orders.push(newOrder);
 
-
-  // ==========================================
-  // SEND NOTIFICATION
-  // ==========================================
-
   try {
-
     const notificationResponse = await fetch(
       `${NOTIFICATION_SERVICE_URL}/notifications`,
       {
         method: "POST",
-
-        headers: {
-          "Content-Type": "application/json"
-        },
-
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-
-          userId: userId,
-
+          userId,
           orderId: newOrder.id,
-
-          message:
-            `Your order #${newOrder.id} has been placed successfully`
-
+          message: `Your order #${newOrder.id} has been placed successfully`
         })
       }
     );
 
-
-    const notificationData =
-      await notificationResponse.json();
-
-
-    console.log(
-      "Notification Service response:",
-      notificationData
-    );
-
-
+    if (!notificationResponse.ok) {
+      console.error("Notification Service returned:", notificationResponse.status);
+    }
   } catch (error) {
-
-    console.error(
-      "Notification Service error:",
-      error.message
-    );
-
+    console.error("Notification Service error:", error.message);
   }
 
-
-  // ==========================================
-  // SEND ORDER RESPONSE
-  // ==========================================
-
-  res.status(201).json({
-
+  return res.status(201).json({
     message: "Order placed successfully",
-
     order: newOrder
-
   });
-
 });
 
-
-// ==========================================
-// START SERVER
-// ==========================================
-
 app.listen(PORT, () => {
-
-  console.log(
-    `Order Service running on http://localhost:${PORT}`
-  );
-
+  console.log(`Order Service running on http://localhost:${PORT}`);
 });

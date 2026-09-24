@@ -1,0 +1,55 @@
+### Health Check
+GET http://localhost:3001/health
+
+
+### Register User
+POST http://localhost:3001/register
+Content-Type: application/json
+
+{
+  "name": "Narendra",
+  "email": "narendra@example.com",
+  "password": "123456"
+}
+
+
+### Get Users
+GET http://localhost:3001/users
+
+
+
+
+### Login User
+POST http://localhost:3001/login
+Content-Type: application/json
+
+{
+  "email": "narendra@example.com",
+  "password": "123456"
+}
+
+
+
+
+
+### Register User
+POST http://localhost:3001/register
+Content-Type: application/json
+
+{
+  "name": "Narendra",
+  "email": "narendra@example.com",
+  "password": "123456"
+}
+
+
+
+
+### Login User
+POST http://localhost:3001/login
+Content-Type: application/json
+
+{
+  "email": "narendra@example.com",
+  "password": "123456"
+}

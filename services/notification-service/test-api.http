@@ -1,0 +1,17 @@
+### Notification Health
+GET http://localhost:3004/health
+
+
+### Create Order Notification
+POST http://localhost:3004/notifications
+Content-Type: application/json
+
+{
+  "userId": 1,
+  "orderId": 2,
+  "message": "Your order #2 has been placed successfully"
+}
+
+
+### Get Notifications
+GET http://localhost:3004/notifications

@@ -1,0 +1,17 @@
+### Create Multi-Product Order Through API Gateway
+POST http://localhost:8080/orders
+Content-Type: application/json
+
+{
+  "userId": 1,
+  "items": [
+    {
+      "productId": 1,
+      "quantity": 2
+    },
+    {
+      "productId": 2,
+      "quantity": 1
+    }
+  ]
+}

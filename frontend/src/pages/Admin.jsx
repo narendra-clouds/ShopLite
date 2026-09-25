@@ -71,6 +71,9 @@ function Admin({ user, onBack }) {
 
   const showToast = (message, type = "success") => setToast({ message, type });
 
+  const revenue = orders.reduce((sum, order) => sum + Number(order.total || 0), 0);
+  const delivered = orders.filter((order) => order.status === "DELIVERED").length;
+  const pending = orders.filter((order) => !["DELIVERED", "CANCELLED"].includes(order.status)).length;
   const lowStock = products.filter((product) => product.status !== "INACTIVE" && Number(product.stock) <= 5);
   const filteredAdminProducts = useMemo(() => {
     const query = productSearch.trim().toLowerCase();
@@ -250,6 +253,19 @@ function Admin({ user, onBack }) {
                     <section className="admin-panel"><div className="admin-panel-title"><div><p className="eyebrow">ORDERS</p><h2>Latest Orders</h2></div><button type="button" onClick={() => setSection("orders")}>Manage →</button></div>{orders.slice().reverse().slice(0, 5).map((order) => <div className="admin-row" key={order.id}><span>Order #{order.id}<small>User {order.userId}</small></span><strong>{order.status}</strong><em>{order.items?.length || 0} item(s)</em></div>)}</section>
                   </div>
                 </div>
+              )}
+
+              {section === "dashboard" && (
+                <section className="admin-panel">
+                  <div className="admin-panel-title"><div><p className="eyebrow">SHOPLITE ANALYTICS</p><h2>Business Overview</h2></div><span>Live from current services</span></div>
+                  <div className="analytics-grid">
+                    <div className="analytics-card"><span>Total Users</span><strong>{users.length}</strong><small>Registered accounts</small></div>
+                    <div className="analytics-card"><span>Total Orders</span><strong>{orders.length}</strong><small>{pending} active · {delivered} delivered</small></div>
+                    <div className="analytics-card"><span>Revenue</span><strong>{money(revenue)}</strong><small>From placed orders</small></div>
+                    <div className="analytics-card"><span>Inventory Alerts</span><strong>{lowStock.length}</strong><small>{products.filter((p) => Number(p.stock) === 0).length} out of stock</small></div>
+                  </div>
+                  <div className="analytics-two-col"><div><h3>Order Status</h3>{["PLACED","CONFIRMED","PACKED","SHIPPED","DELIVERED","CANCELLED"].map((status) => { const count=orders.filter(o=>o.status===status).length; return <div className="analytics-row" key={status}><span>{status}</span><b>{count}</b></div>; })}</div><div><h3>Catalog Snapshot</h3><div className="analytics-row"><span>Active products</span><b>{products.filter(p=>p.status!=="INACTIVE").length}</b></div><div className="analytics-row"><span>Inactive products</span><b>{products.filter(p=>p.status==="INACTIVE").length}</b></div><div className="analytics-row"><span>Units in stock</span><b>{products.reduce((sum,p)=>sum+Number(p.stock||0),0)}</b></div></div></div>
+                </section>
               )}
 
               {section === "products" && (

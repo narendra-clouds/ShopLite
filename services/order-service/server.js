@@ -44,7 +44,7 @@ app.get("/orders", authenticate, (req, res) => {
 });
 
 app.post("/orders", authenticate, async (req, res) => {
-  const { items, deliveryAddress, location } = req.body;
+  const { items, deliveryAddress, location, couponCode } = req.body;
 
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ message: "At least one order item is required" });
@@ -126,7 +126,13 @@ app.post("/orders", authenticate, async (req, res) => {
     quantity: item.quantity,
     lineTotal: item.price * item.quantity,
   }));
-  const total = orderItems.reduce((sum, item) => sum + item.lineTotal, 0);
+  const subtotal = orderItems.reduce((sum, item) => sum + item.lineTotal, 0);
+  const coupons = { SAVE10: { type: "PERCENT", value: 10 }, SAVE500: { type: "FLAT", value: 500 }, WELCOME: { type: "PERCENT", value: 5 } };
+  const coupon = String(couponCode || "").trim().toUpperCase();
+  const rule = coupon ? coupons[coupon] : null;
+  if (coupon && !rule) return res.status(400).json({ message: "Invalid coupon code" });
+  const discount = rule ? (rule.type === "PERCENT" ? Math.min(subtotal, subtotal * rule.value / 100) : Math.min(subtotal, rule.value)) : 0;
+  const total = subtotal - discount;
 
   const newOrder = {
     id: orders.length ? Math.max(...orders.map((order) => order.id)) + 1 : 1,
@@ -134,6 +140,9 @@ app.post("/orders", authenticate, async (req, res) => {
     customerName: req.user.name,
     customerEmail: req.user.email,
     items: orderItems,
+    subtotal,
+    discount,
+    couponCode: rule ? coupon : null,
     total,
     deliveryAddress: {
       fullName: String(deliveryAddress.fullName).trim(),

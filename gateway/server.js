@@ -16,6 +16,7 @@ const proxy = (target, pathFilter) => createProxyMiddleware({ target, changeOrig
 app.use(proxy("http://127.0.0.1:3002", ["/products", "/admin/products"]));
 app.use(proxy("http://127.0.0.1:3003", ["/orders"]));
 app.use(proxy("http://127.0.0.1:3004", ["/notifications"]));
+app.use(proxy("http://127.0.0.1:3005", ["/reviews"]));
 app.use(proxy("http://127.0.0.1:3001", ["/users", "/register", "/login", "/logout", "/validate-token"]));
 
 app.listen(PORT, () => {

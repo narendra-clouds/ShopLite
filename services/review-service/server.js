@@ -1,0 +1,12 @@
+const express = require("express");
+const app = express();
+const PORT = 3005;
+const USER_SERVICE_URL = process.env.USER_SERVICE_URL || "http://localhost:3001";
+app.use(express.json());
+const reviews = [];
+async function authenticate(req,res,next){const auth=req.headers.authorization||"";if(!auth.startsWith("Bearer "))return res.status(401).json({message:"Authentication required"});try{const r=await fetch(`${USER_SERVICE_URL}/validate-token`,{headers:{Authorization:auth}});if(!r.ok)return res.status(401).json({message:"Invalid authentication"});const d=await r.json();req.user=d.user;next();}catch(e){res.status(503).json({message:"Authentication service unavailable"});}}
+app.get("/health",(req,res)=>res.json({service:"review-service",status:"UP",message:"Review Service is running"}));
+app.get("/reviews/:productId",(req,res)=>{const items=reviews.filter(r=>String(r.productId)===String(req.params.productId));const average=items.length?Number((items.reduce((s,r)=>s+r.rating,0)/items.length).toFixed(1)):0;res.json({reviews:items,average,count:items.length});});
+app.post("/reviews",authenticate,(req,res)=>{const productId=Number(req.body.productId),rating=Number(req.body.rating),comment=String(req.body.comment||"").trim();if(!Number.isInteger(productId)||productId<=0||!Number.isInteger(rating)||rating<1||rating>5||comment.length<3)return res.status(400).json({message:"Product, rating 1-5 and a short review are required"});if(reviews.some(r=>r.productId===productId&&r.userId===req.user.id))return res.status(409).json({message:"You have already reviewed this product"});const review={id:reviews.length?Math.max(...reviews.map(r=>r.id))+1:1,productId,userId:req.user.id,userName:req.user.name,rating,comment,createdAt:new Date().toISOString()};reviews.push(review);res.status(201).json({message:"Review added",review});});
+app.delete("/reviews/:id",authenticate,(req,res)=>{const i=reviews.findIndex(r=>String(r.id)===String(req.params.id));if(i<0)return res.status(404).json({message:"Review not found"});if(reviews[i].userId!==req.user.id&&req.user.role!=="ADMIN")return res.status(403).json({message:"Access denied"});reviews.splice(i,1);res.json({message:"Review deleted"});});
+app.listen(PORT,()=>console.log(`Review Service running on http://localhost:${PORT}`));

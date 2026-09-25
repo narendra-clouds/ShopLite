@@ -61,6 +61,11 @@ function App() {
   const [orderError, setOrderError] = useState("");
   const [location, setLocation] = useState(null);
   const [locationLoading, setLocationLoading] = useState(false);
+  const [couponCode, setCouponCode] = useState("");
+  const [reviews, setReviews] = useState([]);
+  const [reviewAverage, setReviewAverage] = useState(0);
+  const [reviewText, setReviewText] = useState("");
+  const [reviewRating, setReviewRating] = useState(5);
 
   useEffect(() => {
     if (!user?.id) {
@@ -164,6 +169,8 @@ function App() {
     (total, item) => total + Number(item.price || 0) * Number(item.quantity || 0),
     0
   );
+  const couponDiscount = couponCode === "SAVE10" ? Math.round(cartTotal * 0.10) : couponCode === "SAVE500" ? Math.min(cartTotal, 500) : couponCode === "WELCOME" ? Math.round(cartTotal * 0.05) : 0;
+  const checkoutTotal = cartTotal - couponDiscount;
 
   const money = (value) =>
     `₹${Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
@@ -392,13 +399,14 @@ function App() {
           })),
           deliveryAddress,
           location,
+          couponCode,
         }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || "Failed to place order");
       setOrderSuccess({
         id: data.order.id,
-        total: cartTotal,
+        total: Number(data.order.total || cartTotal),
         address: deliveryAddress,
         status: data.order.status || "PLACED",
       });
@@ -417,6 +425,22 @@ function App() {
   const openProduct = (product) => {
     setSelectedProduct(product);
     setQuantity(1);
+    setReviews([]);
+    setReviewAverage(0);
+    setReviewText("");
+    fetch(`http://localhost:8080/reviews/${product.id}`).then((r) => r.json()).then((d) => { setReviews(d.reviews || []); setReviewAverage(Number(d.average || 0)); }).catch(() => {});
+  };
+
+  const submitReview = async () => {
+    if (!user) { setIsLogin(true); setSelectedProduct(null); return; }
+    try {
+      const response = await fetch("http://localhost:8080/reviews", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionStorage.getItem(TOKEN_STORAGE_KEY) || ""}` }, body: JSON.stringify({ productId: selectedProduct.id, rating: reviewRating, comment: reviewText }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || "Unable to add review");
+      setReviewText(""); setReviews((current) => [...current, data.review]);
+      setReviewAverage((current) => Number((((current * (reviews.length)) + data.review.rating) / (reviews.length + 1)).toFixed(1)));
+      showToast("Review added successfully");
+    } catch (err) { showToast(err.message, "error"); }
   };
 
   const addSelectedProduct = () => {
@@ -798,7 +822,10 @@ function App() {
                 {cart.map((item) => (
                   <div className="summary-item" key={item.id}><span>{item.name} × {item.quantity}</span><strong>{money(Number(item.price) * item.quantity)}</strong></div>
                 ))}
-                <div className="summary-total-line"><span>Total</span><strong>{money(cartTotal)}</strong></div>
+                <div className="coupon-row"><input value={couponCode} onChange={(event) => setCouponCode(event.target.value.toUpperCase())} placeholder="Coupon code (SAVE10)" /><span>Try SAVE10 · SAVE500 · WELCOME</span></div>
+                <div className="summary-total-line"><span>Subtotal</span><strong>{money(cartTotal)}</strong></div>
+                <div className="summary-total-line"><span>Discount</span><strong>{couponDiscount ? `- ${money(couponDiscount)}` : money(0)}</strong></div>
+                <div className="summary-total-line"><span>Total</span><strong>{money(checkoutTotal)}</strong></div>
                 <p className="checkout-note">🔒 Your checkout details are handled by ShopLite.</p>
                 <button className="primary-btn full" type="button" onClick={placeOrder} disabled={placingOrder}>{placingOrder ? "Placing Order..." : "Place Order →"}</button>
               </div>
@@ -820,6 +847,7 @@ function App() {
               <strong className="detail-price">{money(selectedProduct.price)}</strong>
               <p className="detail-description">{selectedProduct.description || "A carefully selected ShopLite product for your everyday needs."}</p>
               <p className={Number(selectedProduct.stock ?? 10) > 0 ? "detail-stock" : "detail-stock out"}>{Number(selectedProduct.stock ?? 10) > 0 ? `${selectedProduct.stock ?? 10} items available` : "Out of stock"}</p>
+              <div className="review-section"><div className="review-heading"><h3>Customer Reviews</h3><span>⭐ {reviewAverage || "New"} · {reviews.length} review{reviews.length === 1 ? "" : "s"}</span></div>{reviews.length === 0 ? <p className="review-empty">Be the first to review this product.</p> : <div className="review-list">{reviews.slice().reverse().map((review) => <div className="review-card" key={review.id}><div><strong>{review.userName}</strong><span>{"★".repeat(review.rating)}{"☆".repeat(5-review.rating)}</span></div><p>{review.comment}</p></div>)}</div>}{user && <div className="review-form"><select value={reviewRating} onChange={(e) => setReviewRating(Number(e.target.value))}><option value="5">5 ★</option><option value="4">4 ★</option><option value="3">3 ★</option><option value="2">2 ★</option><option value="1">1 ★</option></select><input value={reviewText} onChange={(e) => setReviewText(e.target.value)} placeholder="Share your experience..." /><button className="secondary-btn" type="button" onClick={submitReview}>Add Review</button></div>}</div>
               <div className="detail-actions">
                 <div className="detail-quantity"><button type="button" onClick={() => setQuantity((value) => Math.max(1, value - 1))}>−</button><strong>{quantity}</strong><button type="button" onClick={() => setQuantity((value) => Math.min(Number(selectedProduct.stock || 0), value + 1))}>+</button></div>
                 <button className="primary-btn" type="button" disabled={Number(selectedProduct.stock ?? 10) <= 0} onClick={addSelectedProduct}>Add to Cart</button>

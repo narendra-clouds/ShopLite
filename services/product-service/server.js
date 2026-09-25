@@ -7,6 +7,13 @@ const INTERNAL_SERVICE_KEY = process.env.INTERNAL_SERVICE_KEY || "shoplite-inter
 
 app.use(express.json({ limit: "6mb" }));
 
+const readJsonResponse = async (response) => {
+  const text = await response.text();
+  if (!text) return {};
+  try { return JSON.parse(text); }
+  catch { return { message: text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim() || `HTTP ${response.status}` }; }
+};
+
 let products = [
   {
     id: 1,
@@ -51,8 +58,9 @@ const validateAdmin = async (req, res, next) => {
       headers: { Authorization: authorization },
     });
     if (!response.ok) return res.status(401).json({ message: "Invalid authentication" });
-    const data = await response.json();
-    if (data.user?.role !== "ADMIN") return res.status(403).json({ message: "Admin access required" });
+    const data = await readJsonResponse(response);
+    if (!data.user?.id) return res.status(401).json({ message: data.message || "Invalid authentication response" });
+    if (data.user.role !== "ADMIN") return res.status(403).json({ message: "Admin access required" });
     req.admin = data.user;
     next();
   } catch (error) {
@@ -152,7 +160,7 @@ app.patch("/products/:id/stock", (req, res) => {
   if (req.headers["x-shoplite-internal-key"] !== INTERNAL_SERVICE_KEY) {
     return res.status(403).json({ message: "Internal service access required" });
   }
-  const product = products.find((item) => String(item.id) === String(req.params.id) && item.status !== "INACTIVE");
+  const product = products.find((item) => String(item.id) === String(req.params.id));
   if (!product) return res.status(404).json({ message: "Product not found" });
 
   const { quantity, operation = "DECREASE" } = req.body;
@@ -162,6 +170,10 @@ app.patch("/products/:id/stock", (req, res) => {
   if (operation === "INCREASE") {
     product.stock += Number(quantity);
     return res.json({ message: "Stock restored", product });
+  }
+
+  if (product.status === "INACTIVE") {
+    return res.status(409).json({ message: "Inactive products cannot reserve stock" });
   }
 
   if (Number(quantity) > product.stock) {

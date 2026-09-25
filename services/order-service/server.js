@@ -9,6 +9,13 @@ const INTERNAL_SERVICE_KEY = process.env.INTERNAL_SERVICE_KEY || "shoplite-inter
 
 app.use(express.json({ limit: "6mb" }));
 
+const readJsonResponse = async (response) => {
+  const text = await response.text();
+  if (!text) return {};
+  try { return JSON.parse(text); }
+  catch { return { message: text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim() || `HTTP ${response.status}` }; }
+};
+
 const orders = [];
 
 const authenticate = async (req, res, next) => {
@@ -17,7 +24,8 @@ const authenticate = async (req, res, next) => {
   try {
     const response = await fetch(`${USER_SERVICE_URL}/validate-token`, { headers: { Authorization: authorization } });
     if (!response.ok) return res.status(401).json({ message: "Invalid authentication" });
-    const data = await response.json();
+    const data = await readJsonResponse(response);
+    if (!data.user?.id) return res.status(401).json({ message: data.message || "Invalid authentication response" });
     req.user = data.user;
     req.authorization = authorization;
     next();
@@ -44,7 +52,7 @@ app.get("/orders", authenticate, (req, res) => {
 });
 
 app.post("/orders", authenticate, async (req, res) => {
-  const { items, deliveryAddress, location, couponCode } = req.body;
+  const { items, deliveryAddress, location } = req.body;
 
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ message: "At least one order item is required" });
@@ -76,7 +84,7 @@ app.post("/orders", authenticate, async (req, res) => {
     for (const [productId, requestedQuantity] of quantityByProduct.entries()) {
       const productResponse = await fetch(`${PRODUCT_SERVICE_URL}/products/${productId}`);
       if (!productResponse.ok) throw new Error(`Product ${productId} not found`);
-      const productData = await productResponse.json();
+      const productData = await readJsonResponse(productResponse);
       const product = productData.product;
       if (requestedQuantity > Number(product.stock)) {
         throw new Error(`Insufficient stock for ${product.name}. Only ${product.stock} available.`);
@@ -97,7 +105,7 @@ app.post("/orders", authenticate, async (req, res) => {
         body: JSON.stringify({ quantity: item.quantity, operation: "DECREASE" }),
       });
       if (!stockResponse.ok) {
-        const data = await stockResponse.json().catch(() => ({}));
+        const data = await readJsonResponse(stockResponse);
         throw new Error(data.message || "Unable to reserve stock");
       }
       reserved.push(item);
@@ -127,12 +135,7 @@ app.post("/orders", authenticate, async (req, res) => {
     lineTotal: item.price * item.quantity,
   }));
   const subtotal = orderItems.reduce((sum, item) => sum + item.lineTotal, 0);
-  const coupons = { SAVE10: { type: "PERCENT", value: 10 }, SAVE500: { type: "FLAT", value: 500 }, WELCOME: { type: "PERCENT", value: 5 } };
-  const coupon = String(couponCode || "").trim().toUpperCase();
-  const rule = coupon ? coupons[coupon] : null;
-  if (coupon && !rule) return res.status(400).json({ message: "Invalid coupon code" });
-  const discount = rule ? (rule.type === "PERCENT" ? Math.min(subtotal, subtotal * rule.value / 100) : Math.min(subtotal, rule.value)) : 0;
-  const total = subtotal - discount;
+  const total = subtotal;
 
   const newOrder = {
     id: orders.length ? Math.max(...orders.map((order) => order.id)) + 1 : 1,
@@ -141,8 +144,6 @@ app.post("/orders", authenticate, async (req, res) => {
     customerEmail: req.user.email,
     items: orderItems,
     subtotal,
-    discount,
-    couponCode: rule ? coupon : null,
     total,
     deliveryAddress: {
       fullName: String(deliveryAddress.fullName).trim(),
@@ -177,13 +178,113 @@ app.post("/orders", authenticate, async (req, res) => {
   return res.status(201).json({ message: "Order placed successfully", order: newOrder });
 });
 
-app.patch("/orders/:id/status", authenticate, requireAdmin, (req, res) => {
+const cancellableStatuses = ["PLACED", "CONFIRMED", "PACKED"];
+
+const restoreOrderStock = async (order) => {
+  const restored = [];
+  try {
+    for (const item of order.items || []) {
+      const response = await fetch(`${PRODUCT_SERVICE_URL}/products/${item.productId}/stock`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "x-shoplite-internal-key": INTERNAL_SERVICE_KEY,
+        },
+        body: JSON.stringify({ quantity: Number(item.quantity), operation: "INCREASE" }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.message || `Unable to restore stock for product ${item.productId}`);
+      }
+      restored.push(item);
+    }
+  } catch (error) {
+    // Best-effort rollback so a partial cancellation does not restore only some items.
+    for (const item of restored.reverse()) {
+      try {
+        await fetch(`${PRODUCT_SERVICE_URL}/products/${item.productId}/stock`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "x-shoplite-internal-key": INTERNAL_SERVICE_KEY,
+          },
+          body: JSON.stringify({ quantity: Number(item.quantity), operation: "DECREASE" }),
+        });
+      } catch (rollbackError) {
+        console.error("Cancellation stock rollback failed:", rollbackError.message);
+      }
+    }
+    throw error;
+  }
+};
+
+const cancelOrder = async (order, cancelledBy) => {
+  if (order.status === "CANCELLED") throw new Error("Order is already cancelled.");
+  if (!cancellableStatuses.includes(order.status)) {
+    throw new Error(`Order cannot be cancelled after it reaches ${order.status}.`);
+  }
+  if (order.cancellationInProgress) {
+    throw new Error("Cancellation is already being processed for this order.");
+  }
+
+  order.cancellationInProgress = true;
+  try {
+    await restoreOrderStock(order);
+    order.status = "CANCELLED";
+    order.cancelledAt = new Date().toISOString();
+    order.cancelledBy = cancelledBy;
+  } finally {
+    delete order.cancellationInProgress;
+  }
+};
+
+app.patch("/orders/:id/cancel", authenticate, async (req, res) => {
+  const order = orders.find((item) => String(item.id) === String(req.params.id));
+  if (!order) return res.status(404).json({ message: "Order not found" });
+  if (String(order.userId) !== String(req.user.id)) return res.status(403).json({ message: "You can only cancel your own orders" });
+
+  try {
+    await cancelOrder(order, "CUSTOMER");
+    try {
+      await fetch(`${NOTIFICATION_SERVICE_URL}/notifications`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: req.user.id,
+          orderId: order.id,
+          message: `Your order #${order.id} has been cancelled`,
+        }),
+      });
+    } catch (notificationError) {
+      console.error("Cancellation notification failed:", notificationError.message);
+    }
+    return res.status(200).json({ message: "Order cancelled successfully", order });
+  } catch (error) {
+    return res.status(409).json({ message: error.message || "Unable to cancel order" });
+  }
+});
+
+app.patch("/orders/:id/status", authenticate, requireAdmin, async (req, res) => {
   const order = orders.find((item) => String(item.id) === String(req.params.id));
   if (!order) return res.status(404).json({ message: "Order not found" });
   const allowed = ["PLACED", "CONFIRMED", "PACKED", "SHIPPED", "DELIVERED", "CANCELLED"];
   if (!allowed.includes(req.body.status)) return res.status(400).json({ message: `Status must be one of: ${allowed.join(", ")}` });
-  order.status = req.body.status;
-  res.json({ message: "Order status updated", order });
+
+  if (order.status === "CANCELLED" && req.body.status !== "CANCELLED") {
+    return res.status(409).json({ message: "A cancelled order cannot be reopened" });
+  }
+
+  if (req.body.status === "CANCELLED") {
+    try {
+      await cancelOrder(order, "ADMIN");
+    } catch (error) {
+      return res.status(409).json({ message: error.message || "Unable to cancel order" });
+    }
+  } else {
+    order.status = req.body.status;
+  }
+
+  return res.status(200).json({ message: "Order status updated", order });
 });
 
 app.listen(PORT, () => {

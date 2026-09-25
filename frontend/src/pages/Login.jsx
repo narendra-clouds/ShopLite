@@ -37,7 +37,11 @@ function Login({ onLogin, onBack }) {
         body: JSON.stringify(body),
       });
 
-      const data = await response.json();
+      const text = await response.text();
+      let data = {};
+      try { data = text ? JSON.parse(text) : {}; } catch {
+        data = { message: text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim() || `Request failed (${response.status})` };
+      }
 
       if (!response.ok) {
         setMessageType("error");

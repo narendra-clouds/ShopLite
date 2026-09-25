@@ -1,10 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 
+const readResponseData = async (response) => {
+  const text = await response.text();
+  if (!text) return {};
+  try { return JSON.parse(text); }
+  catch {
+    return { message: text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim() || `Request failed (${response.status})` };
+  }
+};
+
 function Orders({ user, onBack }) {
   const [orders, setOrders] = useState([]);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [actionMessage, setActionMessage] = useState("");
 
   useEffect(() => {
     const load = async () => {
@@ -22,11 +32,10 @@ function Orders({ user, onBack }) {
           fetch("http://localhost:8080/products"),
         ]);
 
-        if (!ordersResponse.ok) throw new Error("Failed to load orders");
-        if (!productsResponse.ok) throw new Error("Failed to load products");
-
-        const ordersData = await ordersResponse.json();
-        const productsData = await productsResponse.json();
+        const ordersData = await readResponseData(ordersResponse);
+        const productsData = await readResponseData(productsResponse);
+        if (!ordersResponse.ok) throw new Error(ordersData.message || `Failed to load orders (HTTP ${ordersResponse.status})`);
+        if (!productsResponse.ok) throw new Error(productsData.message || `Failed to load products (HTTP ${productsResponse.status})`);
 
         setOrders(Array.isArray(ordersData.orders) ? ordersData.orders : []);
         setProducts(Array.isArray(productsData.products) ? productsData.products : []);
@@ -75,6 +84,24 @@ function Orders({ user, onBack }) {
   }, 0));
 
   const statusSteps = ["PLACED", "CONFIRMED", "PACKED", "SHIPPED", "DELIVERED"];
+  const canCancel = (order) => ["PLACED", "CONFIRMED", "PACKED"].includes(order.status);
+
+  const cancelOrder = async (order) => {
+    const confirmed = window.confirm(`Cancel order #${order.id}? The reserved stock will be returned to inventory.`);
+    if (!confirmed) return;
+    try {
+      setActionMessage("");
+      const response = await fetch(`http://localhost:8080/orders/${order.id}/cancel`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${sessionStorage.getItem("shopliteToken") || ""}` },
+      });
+      const data = await readResponseData(response);
+      if (!response.ok) throw new Error(data.message || `Unable to cancel order (HTTP ${response.status})`);
+      setOrders((current) => current.map((item) => item.id === order.id ? data.order : item));
+    } catch (err) {
+      setActionMessage(err.message || "Unable to cancel order");
+    }
+  };
 
   return (
     <div className="orders-page">
@@ -92,6 +119,8 @@ function Orders({ user, onBack }) {
       {!loading && error && (
         <div className="orders-state error-state"><div className="error-icon">⚠️</div><h3>Orders unavailable</h3><p>{error}</p><button className="primary-btn" type="button" onClick={onBack}>Back to ShopLite</button></div>
       )}
+
+      {!loading && !error && actionMessage && <div className="order-action-message" role="alert">⚠️ {actionMessage}</div>}
 
       {!loading && !error && orders.length === 0 && (
         <div className="orders-state"><div className="empty-icon">📦</div><h3>No orders yet</h3><p>Your orders will appear here after you place your first order.</p><button className="primary-btn" type="button" onClick={onBack}>Start Shopping →</button></div>
@@ -128,6 +157,8 @@ function Orders({ user, onBack }) {
               {order.deliveryAddress && <div className="order-delivery-address"><div><p className="small-title">DELIVERY ADDRESS</p><strong>{order.deliveryAddress.fullName}</strong><span>{order.deliveryAddress.address}</span><span>{order.deliveryAddress.city}, {order.deliveryAddress.state} - {order.deliveryAddress.pincode}</span><span>📞 {order.deliveryAddress.phone}</span></div></div>}
               <div className="order-tracking"><p className="small-title">ORDER TRACKING</p><div className="order-tracking-steps">{statusSteps.map((step, index) => { const currentIndex = statusSteps.indexOf(order.status); const active = currentIndex >= 0 && index <= currentIndex; return <div className={active ? "tracking-step active" : "tracking-step"} key={step}><span>{active ? "✓" : index + 1}</span><strong>{step}</strong></div>; })}</div>{order.status === "CANCELLED" && <div className="cancelled-note">This order has been cancelled.</div>}</div>
               <div className="order-footer"><span>Status</span><strong>{order.status}</strong></div>
+              {canCancel(order) && <button className="cancel-order-btn" type="button" onClick={() => cancelOrder(order)}>Cancel Order</button>}
+              {order.status === "CANCELLED" && order.cancelledAt && <div className="cancelled-meta">Cancelled on {dateFor(order.cancelledAt)}</div>}
             </article>
           ))}
         </div>

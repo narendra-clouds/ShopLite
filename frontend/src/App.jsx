@@ -10,6 +10,18 @@ const WISHLIST_STORAGE_KEY = "shopliteWishlist";
 const ADDRESS_STORAGE_KEY = "shopliteAddresses";
 const TOKEN_STORAGE_KEY = "shopliteToken";
 
+const readResponseData = async (response) => {
+  const text = await response.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {
+      message: text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim() || `Request failed (${response.status})`,
+    };
+  }
+};
+
 const emptyAddress = {
   fullName: "",
   phone: "",
@@ -61,7 +73,6 @@ function App() {
   const [orderError, setOrderError] = useState("");
   const [location, setLocation] = useState(null);
   const [locationLoading, setLocationLoading] = useState(false);
-  const [couponCode, setCouponCode] = useState("");
   const [reviews, setReviews] = useState([]);
   const [reviewAverage, setReviewAverage] = useState(0);
   const [reviewText, setReviewText] = useState("");
@@ -117,7 +128,7 @@ function App() {
         setError("");
         const response = await fetch("http://localhost:8080/products");
         if (!response.ok) throw new Error("Product service unavailable");
-        const data = await response.json();
+        const data = await readResponseData(response);
         setProducts(Array.isArray(data.products) ? data.products : []);
       } catch (err) {
         console.error(err);
@@ -169,9 +180,6 @@ function App() {
     (total, item) => total + Number(item.price || 0) * Number(item.quantity || 0),
     0
   );
-  const couponDiscount = couponCode === "SAVE10" ? Math.round(cartTotal * 0.10) : couponCode === "SAVE500" ? Math.min(cartTotal, 500) : couponCode === "WELCOME" ? Math.round(cartTotal * 0.05) : 0;
-  const checkoutTotal = cartTotal - couponDiscount;
-
   const money = (value) =>
     `₹${Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 
@@ -399,11 +407,10 @@ function App() {
           })),
           deliveryAddress,
           location,
-          couponCode,
         }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || "Failed to place order");
+      const data = await readResponseData(response);
+      if (!response.ok) throw new Error(data.message || `Failed to place order (HTTP ${response.status})`);
       setOrderSuccess({
         id: data.order.id,
         total: Number(data.order.total || cartTotal),
@@ -422,21 +429,30 @@ function App() {
     }
   };
 
-  const openProduct = (product) => {
+  const openProduct = async (product) => {
     setSelectedProduct(product);
     setQuantity(1);
     setReviews([]);
     setReviewAverage(0);
     setReviewText("");
-    fetch(`http://localhost:8080/reviews/${product.id}`).then((r) => r.json()).then((d) => { setReviews(d.reviews || []); setReviewAverage(Number(d.average || 0)); }).catch(() => {});
+    try {
+      const response = await fetch(`http://localhost:8080/reviews/${product.id}`);
+      const data = await readResponseData(response);
+      if (response.ok) {
+        setReviews(Array.isArray(data.reviews) ? data.reviews : []);
+        setReviewAverage(Number(data.average || 0));
+      }
+    } catch (err) {
+      console.error("Unable to load reviews:", err);
+    }
   };
 
   const submitReview = async () => {
     if (!user) { setIsLogin(true); setSelectedProduct(null); return; }
     try {
       const response = await fetch("http://localhost:8080/reviews", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionStorage.getItem(TOKEN_STORAGE_KEY) || ""}` }, body: JSON.stringify({ productId: selectedProduct.id, rating: reviewRating, comment: reviewText }) });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || "Unable to add review");
+      const data = await readResponseData(response);
+      if (!response.ok) throw new Error(data.message || `Unable to add review (HTTP ${response.status})`);
       setReviewText(""); setReviews((current) => [...current, data.review]);
       setReviewAverage((current) => Number((((current * (reviews.length)) + data.review.rating) / (reviews.length + 1)).toFixed(1)));
       showToast("Review added successfully");
@@ -822,10 +838,8 @@ function App() {
                 {cart.map((item) => (
                   <div className="summary-item" key={item.id}><span>{item.name} × {item.quantity}</span><strong>{money(Number(item.price) * item.quantity)}</strong></div>
                 ))}
-                <div className="coupon-row"><input value={couponCode} onChange={(event) => setCouponCode(event.target.value.toUpperCase())} placeholder="Coupon code (SAVE10)" /><span>Try SAVE10 · SAVE500 · WELCOME</span></div>
                 <div className="summary-total-line"><span>Subtotal</span><strong>{money(cartTotal)}</strong></div>
-                <div className="summary-total-line"><span>Discount</span><strong>{couponDiscount ? `- ${money(couponDiscount)}` : money(0)}</strong></div>
-                <div className="summary-total-line"><span>Total</span><strong>{money(checkoutTotal)}</strong></div>
+                <div className="summary-total-line"><span>Total</span><strong>{money(cartTotal)}</strong></div>
                 <p className="checkout-note">🔒 Your checkout details are handled by ShopLite.</p>
                 <button className="primary-btn full" type="button" onClick={placeOrder} disabled={placingOrder}>{placingOrder ? "Placing Order..." : "Place Order →"}</button>
               </div>

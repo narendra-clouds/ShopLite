@@ -7,7 +7,7 @@ const PRODUCT_SERVICE_URL = process.env.PRODUCT_SERVICE_URL || "http://localhost
 const USER_SERVICE_URL = process.env.USER_SERVICE_URL || "http://localhost:3001";
 const INTERNAL_SERVICE_KEY = process.env.INTERNAL_SERVICE_KEY || "shoplite-internal-dev-key";
 
-app.use(express.json());
+app.use(express.json({ limit: "6mb" }));
 
 const orders = [];
 
@@ -50,10 +50,13 @@ app.post("/orders", authenticate, async (req, res) => {
     return res.status(400).json({ message: "At least one order item is required" });
   }
 
-  for (const item of items) {
-    if (!item.productId || !Number.isInteger(Number(item.quantity)) || Number(item.quantity) <= 0) {
-      return res.status(400).json({ message: "Each item must contain a valid productId and positive integer quantity" });
-    }
+  const normalizedItems = items.map((item) => ({
+    productId: Number(item.productId),
+    quantity: Number(item.quantity),
+  }));
+
+  if (normalizedItems.some((item) => !Number.isInteger(item.productId) || item.productId <= 0 || !Number.isInteger(item.quantity) || item.quantity <= 0)) {
+    return res.status(400).json({ message: "Each item must contain a valid productId and positive integer quantity" });
   }
 
   const requiredAddressFields = ["fullName", "phone", "address", "city", "state", "pincode"];
@@ -61,22 +64,37 @@ app.post("/orders", authenticate, async (req, res) => {
     return res.status(400).json({ message: "A complete delivery address is required" });
   }
 
+  // Combine duplicate product lines before checking/reserving stock.
+  const quantityByProduct = new Map();
+  for (const item of normalizedItems) {
+    quantityByProduct.set(item.productId, (quantityByProduct.get(item.productId) || 0) + item.quantity);
+  }
+
   const reserved = [];
+  const productSnapshots = [];
   try {
-    for (const item of items) {
-      const productResponse = await fetch(`${PRODUCT_SERVICE_URL}/products/${item.productId}`);
-      if (!productResponse.ok) throw new Error(`Product ${item.productId} not found`);
+    for (const [productId, requestedQuantity] of quantityByProduct.entries()) {
+      const productResponse = await fetch(`${PRODUCT_SERVICE_URL}/products/${productId}`);
+      if (!productResponse.ok) throw new Error(`Product ${productId} not found`);
       const productData = await productResponse.json();
-      if (Number(item.quantity) > Number(productData.product.stock)) {
-        return res.status(409).json({ message: `Insufficient stock for ${productData.product.name}. Only ${productData.product.stock} available.` });
+      const product = productData.product;
+      if (requestedQuantity > Number(product.stock)) {
+        throw new Error(`Insufficient stock for ${product.name}. Only ${product.stock} available.`);
       }
+      productSnapshots.push({
+        productId,
+        name: product.name,
+        price: Number(product.price),
+        image: product.image || "",
+        quantity: requestedQuantity,
+      });
     }
 
-    for (const item of items) {
+    for (const item of productSnapshots) {
       const stockResponse = await fetch(`${PRODUCT_SERVICE_URL}/products/${item.productId}/stock`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", "x-shoplite-internal-key": INTERNAL_SERVICE_KEY },
-        body: JSON.stringify({ quantity: Number(item.quantity), operation: "DECREASE" }),
+        body: JSON.stringify({ quantity: item.quantity, operation: "DECREASE" }),
       });
       if (!stockResponse.ok) {
         const data = await stockResponse.json().catch(() => ({}));
@@ -90,7 +108,7 @@ app.post("/orders", authenticate, async (req, res) => {
         await fetch(`${PRODUCT_SERVICE_URL}/products/${item.productId}/stock`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json", "x-shoplite-internal-key": INTERNAL_SERVICE_KEY },
-          body: JSON.stringify({ quantity: Number(item.quantity), operation: "INCREASE" }),
+          body: JSON.stringify({ quantity: item.quantity, operation: "INCREASE" }),
         });
       } catch (rollbackError) {
         console.error("Inventory rollback failed:", rollbackError.message);
@@ -100,11 +118,31 @@ app.post("/orders", authenticate, async (req, res) => {
     return res.status(409).json({ message: error.message || "Unable to reserve inventory" });
   }
 
+  const orderItems = productSnapshots.map((item) => ({
+    productId: item.productId,
+    name: item.name,
+    price: item.price,
+    image: item.image,
+    quantity: item.quantity,
+    lineTotal: item.price * item.quantity,
+  }));
+  const total = orderItems.reduce((sum, item) => sum + item.lineTotal, 0);
+
   const newOrder = {
-    id: orders.length + 1,
+    id: orders.length ? Math.max(...orders.map((order) => order.id)) + 1 : 1,
     userId: req.user.id,
-    items: items.map((item) => ({ productId: item.productId, quantity: Number(item.quantity) })),
-    deliveryAddress,
+    customerName: req.user.name,
+    customerEmail: req.user.email,
+    items: orderItems,
+    total,
+    deliveryAddress: {
+      fullName: String(deliveryAddress.fullName).trim(),
+      phone: String(deliveryAddress.phone).trim(),
+      address: String(deliveryAddress.address).trim(),
+      city: String(deliveryAddress.city).trim(),
+      state: String(deliveryAddress.state).trim(),
+      pincode: String(deliveryAddress.pincode).trim(),
+    },
     location: location || null,
     status: "PLACED",
     createdAt: new Date().toISOString(),

@@ -1,27 +1,25 @@
-# ShopLite Update Check
+# ShopLite Update Check — September 2026
 
-## This update
-- Admin Product Catalog now uses temporary toast notifications instead of persistent success messages.
-- Added Active/Inactive product lifecycle with a dedicated Activate action.
-- Added product status control while editing.
-- Added Admin product search, status filters, low-stock and out-of-stock filters, and sorting.
-- Improved product stock/status presentation in the Inventory view.
-- Kept inactive products in the admin catalog instead of deleting them.
-- Customer-facing Product Service continues to return only active products.
-- Added backend `PATCH /admin/products/:id/status` with ADMIN authorization and status validation.
-- Existing DELETE admin product action remains a safe deactivation operation for compatibility.
+## Fixed in this build
+
+- Admin can add a product image using a local image file (JPG/PNG/WEBP/etc.).
+- Image preview is shown before saving and can be removed.
+- Browser image uploads are limited to 2 MB and are sent as a data URL for this in-memory learning stage.
+- Product Service accepts the larger JSON payload needed for image data.
+- Product images are displayed in the customer catalog, product details, admin catalog, and order items.
+- Orders now store a delivery-address snapshot, customer name/email, item name/price/image snapshots, line totals, and order total.
+- Admin Orders now show customer information, full delivery address, order items, total, and status controls.
+- Customer My Orders now shows the delivery address and an order-status tracker.
+- Order stock reservation aggregates duplicate product lines before checking stock.
+- Backend stock validation and rollback remain enforced by Product Service / Order Service.
+- Existing user-specific cart, wishlist, and saved-address localStorage isolation is preserved.
+- Admin API authorization remains backend-enforced through the authenticated ADMIN role.
+
+## Important learning-stage limitation
+
+ShopLite currently keeps product/order data in service memory. Uploaded product images therefore survive while the Product Service process is running, but they are not durable storage. PostgreSQL/object storage can be introduced later when the project reaches the database/AWS phase.
 
 ## Validation performed
-- Product Service JavaScript syntax checked with `node --check`.
-- Balanced-brace/parenthesis/bracket checks passed for the modified JSX/CSS/JS files.
-- Frontend `npm run build` was attempted, but this environment does not have the frontend dependencies installed and package downloads were unavailable. Therefore a successful Vite build could not be claimed here.
 
-## Run locally
-```bash
-cd frontend
-npm install
-npm run build
-npm run dev
-```
-
-Start the existing backend services and API Gateway as before.
+- Node syntax checks passed for Order Service, Product Service, User Service, and API Gateway.
+- Frontend production build could not be completed in this environment because Vite dependencies could not be downloaded/installed within the available execution environment. The source files were checked structurally, but a successful `npm run build` is not claimed.

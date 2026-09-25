@@ -69,11 +69,12 @@ function Orders({ user, onBack }) {
     });
   };
 
-  const totalFor = (order) =>
-    (order.items || []).reduce((total, item) => {
-      const product = productMap.get(item.productId);
-      return total + (product ? Number(product.price) * Number(item.quantity) : 0);
-    }, 0);
+  const totalFor = (order) => Number(order.total || (order.items || []).reduce((total, item) => {
+    const product = productMap.get(item.productId);
+    return total + Number(item.price ?? product?.price ?? 0) * Number(item.quantity || 0);
+  }, 0));
+
+  const statusSteps = ["PLACED", "CONFIRMED", "PACKED", "SHIPPED", "DELIVERED"];
 
   return (
     <div className="orders-page">
@@ -109,19 +110,23 @@ function Orders({ user, onBack }) {
                 <h3>Order Items</h3>
                 {(order.items || []).map((item, index) => {
                   const product = productMap.get(item.productId);
+                  const name = item.name || product?.name || `Product #${item.productId}`;
+                  const price = Number(item.price ?? product?.price ?? 0);
                   return (
                     <div className="order-item" key={`${order.id}-${item.productId}-${index}`}>
-                      <div className="order-item-icon">{iconFor(product?.name)}</div>
+                      <div className="order-item-icon">{item.image ? <img src={item.image} alt="" /> : iconFor(name)}</div>
                       <div className="order-item-details">
-                        <strong>{product?.name || `Product #${item.productId}`}</strong>
-                        <p>{product ? `${money(product.price)} × ${item.quantity}` : `Quantity: ${item.quantity}`}</p>
+                        <strong>{name}</strong>
+                        <p>{money(price)} × {item.quantity}</p>
                       </div>
-                      <strong className="order-item-price">{product ? money(product.price * item.quantity) : "—"}</strong>
+                      <strong className="order-item-price">{money(item.lineTotal ?? price * item.quantity)}</strong>
                     </div>
                   );
                 })}
               </div>
               <div className="order-total"><span>Order Total</span><strong>{money(totalFor(order))}</strong></div>
+              {order.deliveryAddress && <div className="order-delivery-address"><div><p className="small-title">DELIVERY ADDRESS</p><strong>{order.deliveryAddress.fullName}</strong><span>{order.deliveryAddress.address}</span><span>{order.deliveryAddress.city}, {order.deliveryAddress.state} - {order.deliveryAddress.pincode}</span><span>📞 {order.deliveryAddress.phone}</span></div></div>}
+              <div className="order-tracking"><p className="small-title">ORDER TRACKING</p><div className="order-tracking-steps">{statusSteps.map((step, index) => { const currentIndex = statusSteps.indexOf(order.status); const active = currentIndex >= 0 && index <= currentIndex; return <div className={active ? "tracking-step active" : "tracking-step"} key={step}><span>{active ? "✓" : index + 1}</span><strong>{step}</strong></div>; })}</div>{order.status === "CANCELLED" && <div className="cancelled-note">This order has been cancelled.</div>}</div>
               <div className="order-footer"><span>Status</span><strong>{order.status}</strong></div>
             </article>
           ))}

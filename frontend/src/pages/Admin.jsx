@@ -10,6 +10,7 @@ const emptyProduct = {
   description: "",
   stock: "",
   image: "",
+  status: "ACTIVE",
 };
 
 function Admin({ user, onBack }) {
@@ -98,6 +99,26 @@ function Admin({ user, onBack }) {
   const updateForm = (event) => {
     const { name, value } = event.target;
     setForm((current) => ({ ...current, [name]: value }));
+  };
+
+  const handleImageChange = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      showToast("Please select an image file", "error");
+      event.target.value = "";
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      showToast("Image must be 2 MB or smaller", "error");
+      event.target.value = "";
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => setForm((current) => ({ ...current, image: String(reader.result || "") }));
+    reader.onerror = () => showToast("Unable to read the image", "error");
+    reader.readAsDataURL(file);
   };
 
   const resetForm = () => {
@@ -240,7 +261,10 @@ function Admin({ user, onBack }) {
                       <div className="admin-form-two"><label>Price<input name="price" type="number" min="0" value={form.price} onChange={updateForm} placeholder="2499" required /></label><label>Stock<input name="stock" type="number" min="0" step="1" value={form.stock} onChange={updateForm} placeholder="50" required /></label></div>
                       <label>Category<input name="category" value={form.category} onChange={updateForm} placeholder="Electronics" required /></label>
                       <label>Description<textarea name="description" value={form.description} onChange={updateForm} placeholder="Product description" rows="4" /></label>
-                      <label>Image URL <span>(optional)</span><input name="image" value={form.image} onChange={updateForm} placeholder="https://..." /></label>
+                      <label>Product Image <span>(optional · JPG, PNG, WEBP · max 2 MB)</span>
+                        <input name="imageFile" type="file" accept="image/*" onChange={handleImageChange} />
+                      </label>
+                      {form.image && <div className="admin-image-preview"><img src={form.image} alt="Product preview" /><button type="button" onClick={() => setForm((current) => ({ ...current, image: "" }))}>Remove image</button></div>}
                       {editingId && (
                         <label>Status<select name="status" value={form.status || "ACTIVE"} onChange={updateForm}><option value="ACTIVE">ACTIVE — Available to customers</option><option value="INACTIVE">INACTIVE — Hidden from customers</option></select></label>
                       )}
@@ -278,7 +302,28 @@ function Admin({ user, onBack }) {
               )}
 
               {section === "orders" && (
-                <section className="admin-panel"><div className="admin-panel-title"><div><p className="eyebrow">ORDER SERVICE</p><h2>Customer Orders</h2></div><span>{orders.length} orders</span></div><div className="admin-orders-list">{orders.slice().reverse().map((order) => <article className="admin-order-card" key={order.id}><div><strong>Order #{order.id}</strong><span>User ID {order.userId} · {new Date(order.createdAt).toLocaleString("en-IN")}</span></div><div><strong>{order.items?.length || 0} item(s)</strong><select value={order.status} onChange={(event) => updateOrderStatus(order, event.target.value)}><option>PLACED</option><option>CONFIRMED</option><option>PACKED</option><option>SHIPPED</option><option>DELIVERED</option><option>CANCELLED</option></select></div></article>)}</div></section>
+                <section className="admin-panel">
+                  <div className="admin-panel-title"><div><p className="eyebrow">ORDER SERVICE</p><h2>Customer Orders</h2></div><span>{orders.length} orders</span></div>
+                  <div className="admin-orders-list">
+                    {orders.length === 0 ? <div className="admin-empty-state"><strong>No orders yet</strong><span>Customer orders will appear here.</span></div> : orders.slice().reverse().map((order) => {
+                      const address = order.deliveryAddress || {};
+                      const customer = users.find((item) => String(item.id) === String(order.userId));
+                      const total = Number(order.total || (order.items || []).reduce((sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 0), 0));
+                      return <article className="admin-order-card rich" key={order.id}>
+                        <div className="admin-order-main">
+                          <div className="admin-order-heading"><div><strong>Order #{order.id}</strong><span>{new Date(order.createdAt).toLocaleString("en-IN")}</span></div><span className={`product-status-badge ${String(order.status).toLowerCase()}`}>● {order.status}</span></div>
+                          <div className="admin-order-columns">
+                            <div><p className="admin-order-label">CUSTOMER</p><strong>{order.customerName || customer?.name || `User #${order.userId}`}</strong><span>{order.customerEmail || customer?.email || ""}</span><span>Phone: {address.phone || "Not provided"}</span></div>
+                            <div><p className="admin-order-label">DELIVERY ADDRESS</p><strong>{address.fullName || order.customerName || "Customer"}</strong><span>{address.address || "Address unavailable"}</span><span>{[address.city, address.state].filter(Boolean).join(", ")}{address.pincode ? ` - ${address.pincode}` : ""}</span></div>
+                            <div><p className="admin-order-label">ORDER TOTAL</p><strong>{money(total)}</strong><span>{order.items?.length || 0} product line(s)</span></div>
+                          </div>
+                          <div className="admin-order-items">{(order.items || []).map((item, index) => <div className="admin-order-item" key={`${order.id}-${item.productId}-${index}`}><div className="admin-order-item-image">{item.image ? <img src={item.image} alt="" /> : "🛍️"}</div><div><strong>{item.name || `Product #${item.productId}`}</strong><span>{money(item.price)} × {item.quantity}</span></div><b>{money(item.lineTotal ?? Number(item.price || 0) * Number(item.quantity || 0))}</b></div>)}</div>
+                        </div>
+                        <div className="admin-order-status-box"><label>Status<select value={order.status} onChange={(event) => updateOrderStatus(order, event.target.value)}><option>PLACED</option><option>CONFIRMED</option><option>PACKED</option><option>SHIPPED</option><option>DELIVERED</option><option>CANCELLED</option></select></label></div>
+                      </article>;
+                    })}
+                  </div>
+                </section>
               )}
 
               {section === "inventory" && (

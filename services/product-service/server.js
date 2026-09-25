@@ -2,7 +2,7 @@ const express = require("express");
 
 const app = express();
 const PORT = 3002;
-const USER_SERVICE_URL = process.env.USER_SERVICE_URL || "http://localhost:3001";
+const USER_SERVICE_URL = process.env.USER_SERVICE_URL || "http://127.0.0.1:3001";
 const INTERNAL_SERVICE_KEY = process.env.INTERNAL_SERVICE_KEY || "shoplite-internal-dev-key";
 
 app.use(express.json({ limit: "6mb" }));

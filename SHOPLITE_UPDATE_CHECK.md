@@ -23,3 +23,10 @@ ShopLite currently keeps product/order data in service memory. Uploaded product 
 
 - Node syntax checks passed for Order Service, Product Service, User Service, and API Gateway.
 - Frontend production build could not be completed in this environment because Vite dependencies could not be downloaded/installed within the available execution environment. The source files were checked structurally, but a successful `npm run build` is not claimed.
+
+Review access update (25 Sep 2026):
+- Delivered orders now show a "Write a Review" action for each order item.
+- Clicking the action opens that product's review section on the customer site.
+- Review history is loaded for the signed-in customer; already-reviewed products show "Reviewed" and cannot be submitted twice from My Orders.
+- Review history failure does not block My Orders from loading.
+- Review Service exposes GET /reviews/user for the authenticated user.

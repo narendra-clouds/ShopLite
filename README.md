@@ -1,85 +1,65 @@
+# ShopLite
 
-## Current learning milestone
+Simple Shopping. Better Experience.
 
-This version adds the first administration and correctness layer while keeping the project intentionally simple.
+ShopLite is a local learning project for React, Node.js microservices, API Gateway, authentication, product management, orders, inventory protection, cancellation, reviews and later Docker/Kubernetes/Jenkins/AWS.
 
-### Customer data isolation
+## Services
 
-Cart, wishlist and saved addresses are now stored using user-scoped browser keys:
+- Frontend: http://localhost:5173
+- API Gateway: http://localhost:8080
+- User Service: http://localhost:3001
+- Product Service: http://localhost:3002
+- Order Service: http://localhost:3003
+- Notification Service: http://localhost:3004
+- Review Service: http://localhost:3005
 
-- `shopliteCart_<userId>`
-- `shopliteWishlist_<userId>`
-- `shopliteAddresses_<userId>`
+Gateway health:
 
-A customer's local data is not reused by the next logged-in customer.
+- http://localhost:8080/health
+- http://localhost:8080/health/services
 
-### Authentication and roles
+## Fresh setup on Windows
 
-The User Service now returns a short-lived-in-process session token and a role (`USER` or `ADMIN`). The browser keeps the user profile in localStorage and the session token in sessionStorage. Passwords are never stored in browser storage.
+Use Node.js 20.19+ (or Node.js 22.12+) and npm. Extract this ZIP into a fresh ShopLite folder. Do not mix files with an older ShopLite copy.
 
-For this learning build, the default admin account is:
+Run `INSTALL-ALL.bat` once, or run `npm install` once in each folder:
+
+```text
+frontend
+ gateway
+services/user-service
+services/product-service
+services/order-service
+services/notification-service
+services/review-service
+```
+
+Then double-click `start-all.bat`.
+
+Or run `npm run dev` manually in each folder.
+
+## Demo admin account
 
 - Email: `admin@shoplite.com`
 - Password: `admin123`
 
-For any non-demo deployment, set `ADMIN_EMAIL` and `ADMIN_PASSWORD` as environment variables and replace the temporary in-memory authentication with a persistent identity system.
+For a non-demo deployment, set `ADMIN_EMAIL` and `ADMIN_PASSWORD` as environment variables and replace the temporary in-memory authentication before production use.
 
-### Admin Dashboard
+## Current behavior
 
-Admin users can open **Admin Dashboard** from the account menu and manage:
+- User data is isolated by user id for cart, wishlist and addresses in the browser.
+- Orders are isolated by authenticated user identity in Order Service.
+- Admin access is enforced by backend authorization.
+- Product stock is validated by Product Service and reserved by Order Service.
+- Customer cancellation is allowed for `PLACED`, `CONFIRMED`, and `PACKED` orders.
+- Cancellation restores reserved inventory and cancelled orders are excluded from Admin Net Sales.
+- Cancelled orders cannot be reopened.
+- Customer orders contain product-name/price/image snapshots, so My Orders does not depend on Product Service to render historical order details.
+- Product reviews are available through Review Service.
+- Coupons and discount codes are intentionally not included.
+- Backend data is still in memory for learning. Restarting a service resets its in-memory data.
 
-- Dashboard statistics
-- Users
-- Products
-- Orders
-- Inventory view
+## Important
 
-Product changes go through Product Service. Products are still API-driven on the customer frontend.
-
-### Product management
-
-Admin APIs support:
-
-- Add product
-- Edit product
-- Update price
-- Update stock
-- Update category/description/image
-- Deactivate product instead of permanently deleting it
-
-### Stock protection
-
-Customer quantity controls stop at available stock. Order Service also checks current product stock and reserves stock through Product Service. Internal stock changes require the service-to-service internal key. Failed reservations attempt a rollback.
-
-### User-specific orders
-
-The Order Service derives the customer identity from the authenticated session rather than trusting a `userId` supplied by the browser. Admins can view all orders; normal users receive only their own orders.
-
-### Order cancellation and sales reporting
-
-Customers can cancel their own orders while they are `PLACED`, `CONFIRMED`, or `PACKED`. Cancellation restores the reserved stock. Admin cancellation follows the same eligibility rules, and cancelled orders cannot be reopened. The admin dashboard reports Net Sales excluding cancelled orders and shows Cancelled Value separately. ShopLite does not have a payment gateway yet, so cancellation does not perform a real monetary refund.
-
-
-### Important limitation
-
-The current project still uses in-memory backend data. Restarting a service resets users, products, orders and sessions. PostgreSQL, database-per-service persistence, Inventory Service, message broker, observability, Docker, Kubernetes, Jenkins and AWS remain later learning phases.
-
-## Recommended Windows startup
-
-After running `npm install` once inside each of these folders:
-
-- `services/user-service`
-- `services/product-service`
-- `services/order-service`
-- `services/notification-service`
-- `services/review-service`
-- `gateway`
-- `frontend`
-
-You can double-click `start-all.bat` to open all ShopLite processes in separate terminal windows.
-
-If checkout says that a service is unavailable, check that the **User Service, Product Service, Order Service and API Gateway** terminals are running. The API Gateway now returns a JSON 503 response instead of a plain-text proxy error, so the frontend will show a useful message rather than a JSON parsing error.
-
-## Current feature scope
-
-Coupons and discount codes are intentionally **not included** in this version. They can be added later as a separate feature without changing the current checkout flow.
+ShopLite is a development/learning project. Authentication, storage, payment processing and service-to-service security are intentionally simplified. The next major learning phases are PostgreSQL/database-per-service, Inventory Service, RabbitMQ/Kafka, Docker, Kubernetes, observability, Jenkins and AWS.

@@ -126,7 +126,7 @@ function App() {
       try {
         setLoading(true);
         setError("");
-        const response = await fetch("http://localhost:8080/products");
+        const response = await fetch("http://127.0.0.1:8080/products");
         if (!response.ok) throw new Error("Product service unavailable");
         const data = await readResponseData(response);
         setProducts(Array.isArray(data.products) ? data.products : []);
@@ -292,7 +292,7 @@ function App() {
     const token = sessionStorage.getItem(TOKEN_STORAGE_KEY);
     if (token) {
       try {
-        await fetch("http://localhost:8080/logout", { headers: { Authorization: `Bearer ${token}` } });
+        await fetch("http://127.0.0.1:8080/logout", { headers: { Authorization: `Bearer ${token}` } });
       } catch {
         // Session cleanup continues locally even if the service is unavailable.
       }
@@ -394,7 +394,7 @@ function App() {
     setPlacingOrder(true);
     setOrderError("");
     try {
-      const response = await fetch("http://localhost:8080/orders", {
+      const response = await fetch("http://127.0.0.1:8080/orders", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -436,7 +436,7 @@ function App() {
     setReviewAverage(0);
     setReviewText("");
     try {
-      const response = await fetch(`http://localhost:8080/reviews/${product.id}`);
+      const response = await fetch(`http://127.0.0.1:8080/reviews/${product.id}`);
       const data = await readResponseData(response);
       if (response.ok) {
         setReviews(Array.isArray(data.reviews) ? data.reviews : []);
@@ -450,7 +450,7 @@ function App() {
   const submitReview = async () => {
     if (!user) { setIsLogin(true); setSelectedProduct(null); return; }
     try {
-      const response = await fetch("http://localhost:8080/reviews", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionStorage.getItem(TOKEN_STORAGE_KEY) || ""}` }, body: JSON.stringify({ productId: selectedProduct.id, rating: reviewRating, comment: reviewText }) });
+      const response = await fetch("http://127.0.0.1:8080/reviews", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionStorage.getItem(TOKEN_STORAGE_KEY) || ""}` }, body: JSON.stringify({ productId: selectedProduct.id, rating: reviewRating, comment: reviewText }) });
       const data = await readResponseData(response);
       if (!response.ok) throw new Error(data.message || `Unable to add review (HTTP ${response.status})`);
       setReviewText(""); setReviews((current) => [...current, data.review]);
@@ -482,11 +482,28 @@ function App() {
     return <Admin user={user} onBack={() => setShowAdmin(false)} />;
   }
 
+  const openReviewForOrderItem = (item) => {
+    const existingProduct = products.find((product) => Number(product.id) === Number(item.productId));
+    const reviewProduct = existingProduct || {
+      id: Number(item.productId),
+      name: item.name || `Product #${item.productId}`,
+      price: Number(item.price || 0),
+      image: item.image || "",
+      category: "Purchased Product",
+      description: "Review this product from your completed ShopLite order.",
+      stock: 0,
+    };
+
+    setShowOrders(false);
+    openProduct(reviewProduct);
+  };
+
   if (showOrders) {
     return (
       <Orders
         user={user}
         onBack={() => setShowOrders(false)}
+        onReviewProduct={openReviewForOrderItem}
       />
     );
   }

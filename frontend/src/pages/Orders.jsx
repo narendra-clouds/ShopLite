@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 const readResponseData = async (response) => {
   const text = await response.text();
@@ -9,12 +9,12 @@ const readResponseData = async (response) => {
   }
 };
 
-function Orders({ user, onBack }) {
+function Orders({ user, onBack, onReviewProduct }) {
   const [orders, setOrders] = useState([]);
-  const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionMessage, setActionMessage] = useState("");
+  const [reviewedProductIds, setReviewedProductIds] = useState(() => new Set());
 
   useEffect(() => {
     const load = async () => {
@@ -27,18 +27,27 @@ function Orders({ user, onBack }) {
       try {
         setLoading(true);
         setError("");
-        const [ordersResponse, productsResponse] = await Promise.all([
-          fetch("http://localhost:8080/orders", { headers: { Authorization: `Bearer ${sessionStorage.getItem("shopliteToken") || ""}` } }),
-          fetch("http://localhost:8080/products"),
-        ]);
-
+        const ordersResponse = await fetch("http://127.0.0.1:8080/orders", {
+          headers: { Authorization: `Bearer ${sessionStorage.getItem("shopliteToken") || ""}` },
+        });
         const ordersData = await readResponseData(ordersResponse);
-        const productsData = await readResponseData(productsResponse);
         if (!ordersResponse.ok) throw new Error(ordersData.message || `Failed to load orders (HTTP ${ordersResponse.status})`);
-        if (!productsResponse.ok) throw new Error(productsData.message || `Failed to load products (HTTP ${productsResponse.status})`);
+        const loadedOrders = Array.isArray(ordersData.orders) ? ordersData.orders : [];
+        setOrders(loadedOrders);
 
-        setOrders(Array.isArray(ordersData.orders) ? ordersData.orders : []);
-        setProducts(Array.isArray(productsData.products) ? productsData.products : []);
+        // Review history is optional for the Orders page. If Review Service is unavailable,
+        // orders should still load normally.
+        try {
+          const reviewsResponse = await fetch("http://127.0.0.1:8080/reviews/user", {
+            headers: { Authorization: `Bearer ${sessionStorage.getItem("shopliteToken") || ""}` },
+          });
+          const reviewsData = await readResponseData(reviewsResponse);
+          if (reviewsResponse.ok && Array.isArray(reviewsData.reviews)) {
+            setReviewedProductIds(new Set(reviewsData.reviews.map((review) => Number(review.productId))));
+          }
+        } catch (reviewError) {
+          console.warn("Unable to load review history:", reviewError.message);
+        }
       } catch (err) {
         console.error(err);
         setError("Unable to load your orders. Please make sure the API Gateway and services are running.");
@@ -49,11 +58,6 @@ function Orders({ user, onBack }) {
 
     load();
   }, [user?.id]);
-
-  const productMap = useMemo(
-    () => new Map(products.map((product) => [product.id, product])),
-    [products]
-  );
 
   const money = (value) =>
     `₹${Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
@@ -79,8 +83,7 @@ function Orders({ user, onBack }) {
   };
 
   const totalFor = (order) => Number(order.total || (order.items || []).reduce((total, item) => {
-    const product = productMap.get(item.productId);
-    return total + Number(item.price ?? product?.price ?? 0) * Number(item.quantity || 0);
+    return total + Number(item.price || 0) * Number(item.quantity || 0);
   }, 0));
 
   const statusSteps = ["PLACED", "CONFIRMED", "PACKED", "SHIPPED", "DELIVERED"];
@@ -91,7 +94,7 @@ function Orders({ user, onBack }) {
     if (!confirmed) return;
     try {
       setActionMessage("");
-      const response = await fetch(`http://localhost:8080/orders/${order.id}/cancel`, {
+      const response = await fetch(`http://127.0.0.1:8080/orders/${order.id}/cancel`, {
         method: "PATCH",
         headers: { Authorization: `Bearer ${sessionStorage.getItem("shopliteToken") || ""}` },
       });
@@ -138,15 +141,24 @@ function Orders({ user, onBack }) {
               <div className="order-items">
                 <h3>Order Items</h3>
                 {(order.items || []).map((item, index) => {
-                  const product = productMap.get(item.productId);
-                  const name = item.name || product?.name || `Product #${item.productId}`;
-                  const price = Number(item.price ?? product?.price ?? 0);
+                  const name = item.name || `Product #${item.productId}`;
+                  const price = Number(item.price || 0);
                   return (
                     <div className="order-item" key={`${order.id}-${item.productId}-${index}`}>
                       <div className="order-item-icon">{item.image ? <img src={item.image} alt="" /> : iconFor(name)}</div>
                       <div className="order-item-details">
                         <strong>{name}</strong>
                         <p>{money(price)} × {item.quantity}</p>
+                        {order.status === "DELIVERED" && onReviewProduct && (
+                          <button
+                            className="secondary-btn order-review-btn"
+                            type="button"
+                            disabled={reviewedProductIds.has(Number(item.productId))}
+                            onClick={() => onReviewProduct(item)}
+                          >
+                            {reviewedProductIds.has(Number(item.productId)) ? "✓ Reviewed" : "⭐ Write a Review"}
+                          </button>
+                        )}
                       </div>
                       <strong className="order-item-price">{money(item.lineTotal ?? price * item.quantity)}</strong>
                     </div>

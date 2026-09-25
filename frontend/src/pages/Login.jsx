@@ -24,8 +24,8 @@ function Login({ onLogin, onBack }) {
 
     try {
       const url = isRegister
-        ? "http://localhost:8080/register"
-        : "http://localhost:8080/login";
+        ? "http://127.0.0.1:8080/register"
+        : "http://127.0.0.1:8080/login";
 
       const body = isRegister
         ? { name: name.trim(), email: email.trim(), password }

@@ -1475,6 +1475,19 @@ footer span {
   font-size: 12px;
 }
 
+.order-review-btn {
+  margin-top: 7px;
+  padding: 7px 10px;
+  font-size: 12px;
+  border-radius: 9px;
+  width: fit-content;
+}
+.order-review-btn:disabled {
+  opacity: 0.7;
+  cursor: default;
+  transform: none;
+}
+
 .order-item-price {
   font-size: 14px;
 }

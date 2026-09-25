@@ -46,8 +46,27 @@ const authenticate = async (req, res, next) => {
   }
 };
 
+const requireAdmin = (req, res, next) => {
+  if (req.user?.role !== "ADMIN") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  next();
+};
+
 app.get("/health", (req, res) => {
   res.json({ service: "review-service", status: "UP", message: "Review Service is running" });
+});
+
+app.get("/admin/reviews", authenticate, requireAdmin, (req, res) => {
+  const sorted = reviews
+    .slice()
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  const average = sorted.length
+    ? Number((sorted.reduce((sum, review) => sum + Number(review.rating || 0), 0) / sorted.length).toFixed(1))
+    : 0;
+
+  return res.json({ reviews: sorted, count: sorted.length, average });
 });
 
 app.get("/reviews/user", authenticate, (req, res) => {

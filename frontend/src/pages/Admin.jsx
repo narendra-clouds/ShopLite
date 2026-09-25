@@ -27,6 +27,9 @@ function Admin({ user, onBack }) {
   const [products, setProducts] = useState([]);
   const [users, setUsers] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [reviews, setReviews] = useState([]);
+  const [reviewSearch, setReviewSearch] = useState("");
+  const [reviewFilter, setReviewFilter] = useState("ALL");
   const [form, setForm] = useState(emptyProduct);
   const [editingId, setEditingId] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -63,6 +66,13 @@ function Admin({ user, onBack }) {
       setProducts(productData.products || []);
       setUsers(userData.users || []);
       setOrders(orderData.orders || []);
+      try {
+        const reviewData = await request("/admin/reviews");
+        setReviews(Array.isArray(reviewData.reviews) ? reviewData.reviews : []);
+      } catch (reviewError) {
+        setReviews([]);
+        showToast(reviewError.message || "Review Service unavailable", "error");
+      }
     } catch (err) {
       showToast(err.message || "Unable to load admin data", "error");
     } finally {
@@ -109,6 +119,33 @@ function Admin({ user, onBack }) {
   }, [products, productFilter, productSearch, productSort]);
 
   const money = (value) => `₹${Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+
+  const filteredAdminReviews = useMemo(() => {
+    const query = reviewSearch.trim().toLowerCase();
+    return reviews.filter((review) => {
+      const matchesRating = reviewFilter === "ALL" || Number(review.rating) === Number(reviewFilter);
+      const product = products.find((item) => Number(item.id) === Number(review.productId));
+      const searchable = `${review.userName || ""} ${review.comment || ""} ${product?.name || `Product #${review.productId}`}`.toLowerCase();
+      return matchesRating && (!query || searchable.includes(query));
+    });
+  }, [reviews, reviewSearch, reviewFilter, products]);
+
+  const averageReviewRating = reviews.length
+    ? (reviews.reduce((sum, review) => sum + Number(review.rating || 0), 0) / reviews.length).toFixed(1)
+    : "0.0";
+
+  const deleteReview = async (review) => {
+    const product = products.find((item) => Number(item.id) === Number(review.productId));
+    const label = product?.name || `Product #${review.productId}`;
+    if (!window.confirm(`Delete this review for ${label}?`)) return;
+    try {
+      await request(`/reviews/${review.id}`, { method: "DELETE" });
+      setReviews((current) => current.filter((item) => item.id !== review.id));
+      showToast("Review deleted successfully");
+    } catch (err) {
+      showToast(err.message || "Unable to delete review", "error");
+    }
+  };
 
   const updateForm = (event) => {
     const { name, value } = event.target;
@@ -234,6 +271,7 @@ function Admin({ user, onBack }) {
             ["dashboard", "▦", "Dashboard"],
             ["products", "▣", "Products"],
             ["orders", "◫", "Orders"],
+            ["reviews", "☆", "Reviews"],
             ["users", "♙", "Users"],
             ["inventory", "◈", "Inventory"],
           ].map(([id, icon, label]) => (
@@ -331,6 +369,50 @@ function Admin({ user, onBack }) {
 
               {section === "users" && (
                 <section className="admin-panel"><div className="admin-panel-title"><div><p className="eyebrow">USER SERVICE</p><h2>Registered Users</h2></div><span>{users.length} accounts</span></div><div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Orders</th></tr></thead><tbody>{users.map((item) => <tr key={item.id}><td>#{item.id}</td><td><strong>{item.name}</strong></td><td>{item.email}</td><td><span className="role-badge">{item.role}</span></td><td>{item.status}</td><td>{orders.filter((order) => String(order.userId) === String(item.id)).length}</td></tr>)}</tbody></table></div></section>
+              )}
+
+              {section === "reviews" && (
+                <section className="admin-panel">
+                  <div className="admin-panel-title">
+                    <div><p className="eyebrow">REVIEW SERVICE</p><h2>Customer Reviews</h2></div>
+                    <span>{reviews.length} reviews · ⭐ {averageReviewRating}</span>
+                  </div>
+                  <div className="admin-review-toolbar">
+                    <input value={reviewSearch} onChange={(event) => setReviewSearch(event.target.value)} placeholder="Search reviews, customers or products..." aria-label="Search customer reviews" />
+                    <select value={reviewFilter} onChange={(event) => setReviewFilter(event.target.value)} aria-label="Filter reviews by rating">
+                      <option value="ALL">All ratings</option>
+                      <option value="5">5 stars</option>
+                      <option value="4">4 stars</option>
+                      <option value="3">3 stars</option>
+                      <option value="2">2 stars</option>
+                      <option value="1">1 star</option>
+                    </select>
+                  </div>
+                  <div className="admin-review-list">
+                    {filteredAdminReviews.length === 0 ? (
+                      <div className="admin-empty-state"><strong>No reviews found</strong><span>Customer reviews will appear here after users submit them.</span></div>
+                    ) : filteredAdminReviews.map((review) => {
+                      const product = products.find((item) => Number(item.id) === Number(review.productId));
+                      const productName = product?.name || `Product #${review.productId}`;
+                      return (
+                        <article className="admin-review-card" key={review.id}>
+                          <div className="admin-review-main">
+                            <div className="admin-review-top">
+                              <div>
+                                <strong>{productName}</strong>
+                                <span>{review.userName || `User #${review.userId}`}</span>
+                              </div>
+                              <div className="admin-review-rating">{"★".repeat(Number(review.rating || 0))}{"☆".repeat(Math.max(0, 5 - Number(review.rating || 0)))}</div>
+                            </div>
+                            <p>{review.comment}</p>
+                            <small>{review.createdAt ? new Date(review.createdAt).toLocaleString("en-IN") : "Date unavailable"}</small>
+                          </div>
+                          <button type="button" className="danger-text admin-review-delete" onClick={() => deleteReview(review)}>Delete</button>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </section>
               )}
 
               {section === "orders" && (

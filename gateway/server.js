@@ -19,7 +19,7 @@ const routeTable = [
   { prefixes: ["/products", "/admin/products"], target: SERVICES.PRODUCT, service: "product-service" },
   { prefixes: ["/orders"], target: SERVICES.ORDER, service: "order-service" },
   { prefixes: ["/notifications"], target: SERVICES.NOTIFICATION, service: "notification-service" },
-  { prefixes: ["/reviews"], target: SERVICES.REVIEW, service: "review-service" },
+  { prefixes: ["/reviews", "/admin/reviews"], target: SERVICES.REVIEW, service: "review-service" },
   { prefixes: ["/users", "/register", "/login", "/logout", "/validate-token"], target: SERVICES.USER, service: "user-service" },
 ];
 

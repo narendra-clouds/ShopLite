@@ -56,7 +56,8 @@ For a non-demo deployment, set `ADMIN_EMAIL` and `ADMIN_PASSWORD` as environment
 - Cancellation restores reserved inventory and cancelled orders are excluded from Admin Net Sales.
 - Cancelled orders cannot be reopened.
 - Customer orders contain product-name/price/image snapshots, so My Orders does not depend on Product Service to render historical order details.
-- Product reviews are available through Review Service.
+- Product reviews are available through Review Service. Customers can review products, and the Admin Dashboard has a protected Reviews section for viewing/searching/filtering/deleting reviews.
+- The API Gateway forwards both `/reviews/*` and protected `/admin/reviews` requests to Review Service.
 - Coupons and discount codes are intentionally not included.
 - Backend data is still in memory for learning. Restarting a service resets its in-memory data.
 

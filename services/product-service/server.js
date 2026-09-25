@@ -117,9 +117,28 @@ app.put("/admin/products/:id", validateAdmin, (req, res) => {
     if (!Number.isInteger(Number(stock)) || Number(stock) < 0) return res.status(400).json({ message: "Stock must be a non-negative integer" });
     product.stock = Number(stock);
   }
-  if (status !== undefined) product.status = status === "INACTIVE" ? "INACTIVE" : "ACTIVE";
+  if (status !== undefined) {
+    if (!["ACTIVE", "INACTIVE"].includes(status)) {
+      return res.status(400).json({ message: "Status must be ACTIVE or INACTIVE" });
+    }
+    product.status = status;
+  }
 
   res.json({ message: "Product updated successfully", product });
+});
+
+app.patch("/admin/products/:id/status", validateAdmin, (req, res) => {
+  const product = products.find((item) => String(item.id) === String(req.params.id));
+  if (!product) return res.status(404).json({ message: "Product not found" });
+  const { status } = req.body;
+  if (!["ACTIVE", "INACTIVE"].includes(status)) {
+    return res.status(400).json({ message: "Status must be ACTIVE or INACTIVE" });
+  }
+  product.status = status;
+  return res.json({
+    message: status === "ACTIVE" ? "Product activated successfully" : "Product deactivated successfully",
+    product,
+  });
 });
 
 app.delete("/admin/products/:id", validateAdmin, (req, res) => {

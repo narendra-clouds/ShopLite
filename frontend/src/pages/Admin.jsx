@@ -21,8 +21,10 @@ function Admin({ user, onBack }) {
   const [editingId, setEditingId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [toast, setToast] = useState(null);
+  const [productFilter, setProductFilter] = useState("ALL");
+  const [productSearch, setProductSearch] = useState("");
+  const [productSort, setProductSort] = useState("NEWEST");
 
   const token = sessionStorage.getItem(TOKEN_KEY) || "";
   const headers = useMemo(() => ({
@@ -43,7 +45,6 @@ function Admin({ user, onBack }) {
   const loadAll = async () => {
     try {
       setLoading(true);
-      setError("");
       const [productData, userData, orderData] = await Promise.all([
         request("/admin/products"),
         request("/users"),
@@ -53,7 +54,7 @@ function Admin({ user, onBack }) {
       setUsers(userData.users || []);
       setOrders(orderData.orders || []);
     } catch (err) {
-      setError(err.message || "Unable to load admin data");
+      showToast(err.message || "Unable to load admin data", "error");
     } finally {
       setLoading(false);
     }
@@ -61,7 +62,36 @@ function Admin({ user, onBack }) {
 
   useEffect(() => { loadAll(); }, []);
 
+  useEffect(() => {
+    if (!toast) return undefined;
+    const timer = window.setTimeout(() => setToast(null), 3200);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
+  const showToast = (message, type = "success") => setToast({ message, type });
+
   const lowStock = products.filter((product) => product.status !== "INACTIVE" && Number(product.stock) <= 5);
+  const filteredAdminProducts = useMemo(() => {
+    const query = productSearch.trim().toLowerCase();
+    const result = products.filter((product) => {
+      const status = product.status === "INACTIVE" ? "INACTIVE" : "ACTIVE";
+      const stock = Number(product.stock || 0);
+      const matchesFilter =
+        productFilter === "ALL" ||
+        (productFilter === "ACTIVE" && status === "ACTIVE") ||
+        (productFilter === "INACTIVE" && status === "INACTIVE") ||
+        (productFilter === "LOW_STOCK" && status === "ACTIVE" && stock > 0 && stock <= 5) ||
+        (productFilter === "OUT_OF_STOCK" && stock === 0);
+      const matchesSearch = !query || `${product.name} ${product.category} ${product.description || ""}`.toLowerCase().includes(query);
+      return matchesFilter && matchesSearch;
+    });
+    return result.sort((a, b) => {
+      if (productSort === "PRICE_LOW") return Number(a.price) - Number(b.price);
+      if (productSort === "PRICE_HIGH") return Number(b.price) - Number(a.price);
+      if (productSort === "NAME") return String(a.name).localeCompare(String(b.name));
+      return Number(b.id) - Number(a.id);
+    });
+  }, [products, productFilter, productSearch, productSort]);
 
   const money = (value) => `₹${Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 
@@ -78,8 +108,6 @@ function Admin({ user, onBack }) {
   const saveProduct = async (event) => {
     event.preventDefault();
     setSaving(true);
-    setError("");
-    setNotice("");
     try {
       const payload = {
         ...form,
@@ -90,11 +118,11 @@ function Admin({ user, onBack }) {
         method: editingId ? "PUT" : "POST",
         body: JSON.stringify(payload),
       });
-      setNotice(editingId ? "Product updated successfully" : "Product added successfully");
+      showToast(editingId ? "Product updated successfully" : "Product added successfully");
       resetForm();
       await loadAll();
     } catch (err) {
-      setError(err.message);
+      showToast(err.message || "Unable to save product", "error");
     } finally {
       setSaving(false);
     }
@@ -110,6 +138,7 @@ function Admin({ user, onBack }) {
       description: product.description || "",
       stock: String(product.stock),
       image: product.image || "",
+      status: product.status === "INACTIVE" ? "INACTIVE" : "ACTIVE",
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -118,25 +147,39 @@ function Admin({ user, onBack }) {
     if (!window.confirm(`Deactivate ${product.name}?`)) return;
     try {
       await request(`/admin/products/${product.id}`, { method: "DELETE" });
-      setNotice(`${product.name} was deactivated`);
+      showToast(`${product.name} was deactivated`);
       await loadAll();
     } catch (err) {
-      setError(err.message);
+      showToast(err.message || "Unable to deactivate product", "error");
+    }
+  };
+
+  const activateProduct = async (product) => {
+    try {
+      await request(`/admin/products/${product.id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "ACTIVE" }),
+      });
+      showToast(`${product.name} is active again`);
+      await loadAll();
+    } catch (err) {
+      showToast(err.message || "Unable to activate product", "error");
     }
   };
 
   const updateOrderStatus = async (order, status) => {
     try {
       await request(`/orders/${order.id}/status`, { method: "PATCH", body: JSON.stringify({ status }) });
-      setNotice(`Order #${order.id} updated to ${status}`);
+      showToast(`Order #${order.id} updated to ${status}`);
       await loadAll();
     } catch (err) {
-      setError(err.message);
+      showToast(err.message || "Unable to update order", "error");
     }
   };
 
   return (
     <div className="admin-page">
+      {toast && <div className={`admin-toast ${toast.type}`} role="status"><span>{toast.type === "error" ? "!" : "✓"}</span><p>{toast.message}</p><button type="button" onClick={() => setToast(null)} aria-label="Close notification">×</button></div>}
       <header className="admin-topbar">
         <button className="logo admin-logo" type="button" onClick={onBack}>🛍️ <span>Shop</span>Lite <small>ADMIN</small></button>
         <div className="admin-top-actions">
@@ -171,8 +214,6 @@ function Admin({ user, onBack }) {
             <button className="secondary-btn" type="button" onClick={loadAll}>↻ Refresh</button>
           </div>
 
-          {error && <div className="admin-alert error">⚠️ {error}</div>}
-          {notice && <div className="admin-alert success">✓ {notice}</div>}
           {loading ? <div className="admin-loading"><div className="loader" /><h3>Loading admin data...</h3></div> : (
             <>
               {section === "dashboard" && (
@@ -200,10 +241,35 @@ function Admin({ user, onBack }) {
                       <label>Category<input name="category" value={form.category} onChange={updateForm} placeholder="Electronics" required /></label>
                       <label>Description<textarea name="description" value={form.description} onChange={updateForm} placeholder="Product description" rows="4" /></label>
                       <label>Image URL <span>(optional)</span><input name="image" value={form.image} onChange={updateForm} placeholder="https://..." /></label>
+                      {editingId && (
+                        <label>Status<select name="status" value={form.status || "ACTIVE"} onChange={updateForm}><option value="ACTIVE">ACTIVE — Available to customers</option><option value="INACTIVE">INACTIVE — Hidden from customers</option></select></label>
+                      )}
                       <button className="primary-btn full" disabled={saving}>{saving ? "Saving..." : editingId ? "Save Changes" : "Add Product"}</button>
                     </form>
                   </section>
-                  <section className="admin-panel"><div className="admin-panel-title"><div><p className="eyebrow">CATALOG</p><h2>Products</h2></div><span>{products.length} total</span></div><div className="admin-product-list">{products.map((product) => <article className={`admin-product-card ${product.status === "INACTIVE" ? "inactive" : ""}`} key={product.id}><div className="admin-product-visual">{product.image ? <img src={product.image} alt="" /> : "🛍️"}</div><div className="admin-product-info"><div><strong>{product.name}</strong><span>{product.category}</span></div><div><b>{money(product.price)}</b><em className={product.stock <= 5 ? "low" : ""}>{product.stock} in stock</em></div></div><div className="admin-product-actions"><button type="button" onClick={() => editProduct(product)}>Edit</button>{product.status !== "INACTIVE" && <button className="danger-text" type="button" onClick={() => deactivateProduct(product)}>Deactivate</button>}</div></article>)}</div></section>
+                  <section className="admin-panel">
+                    <div className="admin-panel-title"><div><p className="eyebrow">CATALOG</p><h2>Products</h2></div><span>{filteredAdminProducts.length} shown · {products.length} total</span></div>
+                    <div className="admin-product-toolbar">
+                      <input value={productSearch} onChange={(event) => setProductSearch(event.target.value)} placeholder="Search products..." aria-label="Search admin products" />
+                      <div className="admin-filter-pills">{[["ALL","All"],["ACTIVE","Active"],["INACTIVE","Inactive"],["LOW_STOCK","Low Stock"],["OUT_OF_STOCK","Out of Stock"]].map(([id,label]) => <button key={id} type="button" className={productFilter === id ? "active" : ""} onClick={() => setProductFilter(id)}>{label}</button>)}</div>
+                      <select value={productSort} onChange={(event) => setProductSort(event.target.value)} aria-label="Sort products"><option value="NEWEST">Newest</option><option value="NAME">Name A–Z</option><option value="PRICE_LOW">Price low → high</option><option value="PRICE_HIGH">Price high → low</option></select>
+                    </div>
+                    <div className="admin-product-list">
+                      {filteredAdminProducts.length === 0 ? <div className="admin-empty-state"><strong>No products found</strong><span>Try another search or filter.</span></div> : filteredAdminProducts.map((product) => {
+                        const status = product.status === "INACTIVE" ? "INACTIVE" : "ACTIVE";
+                        const stock = Number(product.stock || 0);
+                        const stockLabel = stock === 0 ? "Out of stock" : stock <= 5 ? `${stock} left · Low stock` : `${stock} in stock`;
+                        return <article className={`admin-product-card ${status === "INACTIVE" ? "inactive" : ""}`} key={product.id}>
+                          <div className="admin-product-visual">{product.image ? <img src={product.image} alt="" /> : "🛍️"}</div>
+                          <div className="admin-product-info">
+                            <div><strong>{product.name}</strong><span>{product.category}</span><span className={`product-status-badge ${status.toLowerCase()}`}>{status === "ACTIVE" ? "● Active" : "● Inactive"}</span></div>
+                            <div><b>{money(product.price)}</b><em className={stock <= 5 ? "low" : ""}>{stockLabel}</em></div>
+                          </div>
+                          <div className="admin-product-actions"><button type="button" onClick={() => editProduct(product)}>Edit</button>{status === "ACTIVE" ? <button className="danger-text" type="button" onClick={() => deactivateProduct(product)}>Deactivate</button> : <button className="activate-text" type="button" onClick={() => activateProduct(product)}>Activate</button>}</div>
+                        </article>;
+                      })}
+                    </div>
+                  </section>
                 </div>
               )}
 
@@ -216,7 +282,7 @@ function Admin({ user, onBack }) {
               )}
 
               {section === "inventory" && (
-                <section className="admin-panel"><div className="admin-panel-title"><div><p className="eyebrow">INVENTORY VIEW</p><h2>Stock Levels</h2></div><span>{lowStock.length} low-stock</span></div><div className="inventory-grid">{products.filter((p) => p.status !== "INACTIVE").map((product) => <div className={`inventory-card ${Number(product.stock) <= 5 ? "low" : ""}`} key={product.id}><span>{product.category}</span><strong>{product.name}</strong><div className="inventory-number">{product.stock}</div><small>{product.stock <= 5 ? "Restock soon" : "Healthy stock"}</small><button type="button" onClick={() => editProduct(product)}>Update stock →</button></div>)}</div></section>
+                <section className="admin-panel"><div className="admin-panel-title"><div><p className="eyebrow">INVENTORY VIEW</p><h2>Stock Levels</h2></div><span>{lowStock.length} low-stock · {products.filter((p) => Number(p.stock) === 0).length} out</span></div><div className="inventory-grid">{products.map((product) => { const stock = Number(product.stock || 0); const inactive = product.status === "INACTIVE"; return <div className={`inventory-card ${stock === 0 ? "out" : stock <= 5 ? "low" : ""} ${inactive ? "inactive" : ""}`} key={product.id}><span>{product.category}</span><strong>{product.name}</strong><div className="inventory-number">{stock}</div><small>{inactive ? "Product inactive" : stock === 0 ? "Out of stock" : stock <= 5 ? "Restock soon" : "Healthy stock"}</small><div className="inventory-actions"><button type="button" onClick={() => editProduct(product)}>Update stock →</button>{inactive ? <button type="button" className="activate-text" onClick={() => activateProduct(product)}>Activate</button> : <button type="button" className="danger-text" onClick={() => deactivateProduct(product)}>Deactivate</button>}</div></div>; })}</div></section>
               )}
             </>
           )}

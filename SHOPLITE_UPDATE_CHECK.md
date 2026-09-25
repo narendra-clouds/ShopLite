@@ -1,36 +1,27 @@
-# ShopLite update verification
+# ShopLite Update Check
 
-Updated:
-- frontend/src/App.jsx
-- frontend/src/App.css
-- frontend/src/pages/Login.jsx
-- frontend/src/pages/Orders.jsx
-- services/order-service/server.js
-- services/product-service/server.js
+## This update
+- Admin Product Catalog now uses temporary toast notifications instead of persistent success messages.
+- Added Active/Inactive product lifecycle with a dedicated Activate action.
+- Added product status control while editing.
+- Added Admin product search, status filters, low-stock and out-of-stock filters, and sorting.
+- Improved product stock/status presentation in the Inventory view.
+- Kept inactive products in the admin catalog instead of deleting them.
+- Customer-facing Product Service continues to return only active products.
+- Added backend `PATCH /admin/products/:id/status` with ADMIN authorization and status validation.
+- Existing DELETE admin product action remains a safe deactivation operation for compatibility.
 
-Implemented:
-- API-driven product search and category filtering
-- Clickable product cards and product detail modal
-- Wishlist
-- Login/register user state
-- Safe user info in localStorage (no password)
-- User-name account menu
-- Profile, orders, wishlist, saved addresses and settings panels
-- Delivery address checkout
-- Optional one-time current location capture
-- Real logged-in user ID for order creation
-- User-specific order retrieval through ?userId=
-- Order confirmation with total and delivery address
-- Responsive layout
+## Validation performed
+- Product Service JavaScript syntax checked with `node --check`.
+- Balanced-brace/parenthesis/bracket checks passed for the modified JSX/CSS/JS files.
+- Frontend `npm run build` was attempted, but this environment does not have the frontend dependencies installed and package downloads were unavailable. Therefore a successful Vite build could not be claimed here.
 
-Verification:
-- Backend Node.js syntax checks passed for all five server files.
-- App.jsx, Login.jsx and Orders.jsx contain no accidental escaped JSX/JavaScript sequences.
-- App.css contains no accidental escaped CSS/comment sequences.
-- App.css braces are balanced.
-- No new dependencies were added.
+## Run locally
+```bash
+cd frontend
+npm install
+npm run build
+npm run dev
+```
 
-Build note:
-The supplied node_modules directory in the uploaded ZIP contained Windows/native optional dependencies that cannot execute in this Linux validation environment. `npm run build` therefore could not complete because Vite/Rolldown's native binding is missing. This is an environment/dependency-installation issue, not a reported source-code syntax error. Run `npm install` (or `npm ci`) on the Windows development machine before `npm run build`.
-
-Additional frontend cleanup: replaced the old Vite starter index.css so it cannot override ShopLite's layout.
+Start the existing backend services and API Gateway as before.

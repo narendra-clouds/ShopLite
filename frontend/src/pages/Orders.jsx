@@ -18,7 +18,7 @@ function Orders({ user, onBack }) {
         setLoading(true);
         setError("");
         const [ordersResponse, productsResponse] = await Promise.all([
-          fetch(`http://localhost:8080/orders?userId=${encodeURIComponent(user.id)}`),
+          fetch("http://localhost:8080/orders", { headers: { Authorization: `Bearer ${sessionStorage.getItem("shopliteToken") || ""}` } }),
           fetch("http://localhost:8080/products"),
         ]);
 

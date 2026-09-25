@@ -1,117 +1,122 @@
 const express = require("express");
+const crypto = require("crypto");
 
 const app = express();
-
 const PORT = 3001;
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@shoplite.com";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
 
-// Middleware
 app.use(express.json());
 
-// Temporary in-memory users
-const users = [];
+const users = [
+  {
+    id: 1,
+    name: "ShopLite Owner",
+    email: ADMIN_EMAIL,
+    password: ADMIN_PASSWORD,
+    role: "ADMIN",
+    status: "ACTIVE",
+    createdAt: new Date().toISOString(),
+  },
+];
 
-// Health check
+const sessions = new Map();
+
+const safeUser = (user) => ({
+  id: user.id,
+  name: user.name,
+  email: user.email,
+  role: user.role,
+  status: user.status,
+  createdAt: user.createdAt,
+});
+
+const getToken = (req) => {
+  const header = req.headers.authorization || "";
+  return header.startsWith("Bearer ") ? header.slice(7) : "";
+};
+
+const authenticate = (req, res, next) => {
+  const token = getToken(req);
+  const session = sessions.get(token);
+  if (!session) return res.status(401).json({ message: "Authentication required" });
+  const user = users.find((item) => item.id === session.userId);
+  if (!user) return res.status(401).json({ message: "Invalid session" });
+  req.user = user;
+  next();
+};
+
+const requireAdmin = (req, res, next) => {
+  if (req.user?.role !== "ADMIN") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  next();
+};
+
 app.get("/health", (req, res) => {
-  res.json({
-    service: "user-service",
-    status: "UP",
-    message: "User Service is running"
-  });
+  res.json({ service: "user-service", status: "UP", message: "User Service is running" });
 });
 
-// Get users
-app.get("/users", (req, res) => {
-  res.json({
-    users
-  });
+app.get("/validate-token", authenticate, (req, res) => {
+  res.json({ valid: true, user: safeUser(req.user) });
 });
 
-// Register user
+app.get("/users", authenticate, requireAdmin, (req, res) => {
+  res.json({ users: users.map(safeUser) });
+});
+
 app.post("/register", (req, res) => {
   const { name, email, password } = req.body;
-
-  // Validate input
   if (!name || !email || !password) {
-    return res.status(400).json({
-      message: "Name, email and password are required"
-    });
+    return res.status(400).json({ message: "Name, email and password are required" });
   }
 
-  // Check if user already exists
-  const existingUser = users.find(
-    (user) => user.email === email
-  );
-
-  if (existingUser) {
-    return res.status(409).json({
-      message: "User already exists"
-    });
+  const normalizedEmail = String(email).trim().toLowerCase();
+  if (users.some((user) => user.email === normalizedEmail)) {
+    return res.status(409).json({ message: "User already exists" });
   }
 
-  // Create user
   const newUser = {
     id: users.length + 1,
-    name,
-    email,
-    password
+    name: String(name).trim(),
+    email: normalizedEmail,
+    password,
+    role: "USER",
+    status: "ACTIVE",
+    createdAt: new Date().toISOString(),
   };
 
   users.push(newUser);
-
-  res.status(201).json({
-    message: "User registered successfully",
-    user: {
-      id: newUser.id,
-      name: newUser.name,
-      email: newUser.email
-    }
-  });
+  res.status(201).json({ message: "User registered successfully", user: safeUser(newUser) });
 });
 
-
-// Login user
 app.post("/login", (req, res) => {
   const { email, password } = req.body;
-
-  // Validate input
   if (!email || !password) {
-    return res.status(400).json({
-      message: "Email and password are required"
-    });
+    return res.status(400).json({ message: "Email and password are required" });
   }
 
-  // Find user
-  const user = users.find(
-    (user) => user.email === email
-  );
-
-  if (!user) {
-    return res.status(401).json({
-      message: "Invalid email or password"
-    });
+  const user = users.find((item) => item.email === String(email).trim().toLowerCase());
+  if (!user || user.password !== password) {
+    return res.status(401).json({ message: "Invalid email or password" });
+  }
+  if (user.status !== "ACTIVE") {
+    return res.status(403).json({ message: "This account is inactive" });
   }
 
-  // Check password
-  if (user.password !== password) {
-    return res.status(401).json({
-      message: "Invalid email or password"
-    });
-  }
+  const token = crypto.randomBytes(32).toString("hex");
+  sessions.set(token, { userId: user.id, createdAt: Date.now() });
 
-  // Login successful
-  res.json({
-    message: "Login successful",
-    user: {
-      id: user.id,
-      name: user.name,
-      email: user.email
-    }
-  });
+  res.json({ message: "Login successful", token, user: safeUser(user) });
 });
 
-// Start server
+app.post("/logout", authenticate, (req, res) => {
+  const token = getToken(req);
+  sessions.delete(token);
+  res.json({ message: "Logged out successfully" });
+});
+
 app.listen(PORT, () => {
-  console.log(
-    `User Service running on http://localhost:${PORT}`
-  );
+  console.log(`User Service running on http://localhost:${PORT}`);
+  console.log(`Admin login: ${ADMIN_EMAIL}`);
 });

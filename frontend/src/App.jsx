@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Login from "./pages/Login";
 import Orders from "./pages/Orders";
+import Admin from "./pages/Admin";
 import "./App.css";
 
 const USER_STORAGE_KEY = "shopliteUser";
 const CART_STORAGE_KEY = "shopliteCart";
 const WISHLIST_STORAGE_KEY = "shopliteWishlist";
 const ADDRESS_STORAGE_KEY = "shopliteAddresses";
+const TOKEN_STORAGE_KEY = "shopliteToken";
 
 const emptyAddress = {
   fullName: "",
@@ -34,6 +36,7 @@ function App() {
   const [showWishlist, setShowWishlist] = useState(false);
   const [showAddresses, setShowAddresses] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const accountRef = useRef(null);
 
@@ -41,27 +44,10 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const [cart, setCart] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem(CART_STORAGE_KEY)) || [];
-    } catch {
-      return [];
-    }
-  });
-  const [wishlist, setWishlist] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem(WISHLIST_STORAGE_KEY)) || [];
-    } catch {
-      return [];
-    }
-  });
-  const [addresses, setAddresses] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem(ADDRESS_STORAGE_KEY)) || [];
-    } catch {
-      return [];
-    }
-  });
+  const [cart, setCart] = useState([]);
+  const [wishlist, setWishlist] = useState([]);
+  const [addresses, setAddresses] = useState([]);
+  const hydratedUserIdRef = useRef(null);
   const [addressForm, setAddressForm] = useState(emptyAddress);
   const [selectedAddressId, setSelectedAddressId] = useState("");
 
@@ -77,16 +63,47 @@ function App() {
   const [locationLoading, setLocationLoading] = useState(false);
 
   useEffect(() => {
-    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
-  }, [cart]);
+    if (!user?.id) {
+      hydratedUserIdRef.current = null;
+      setCart([]);
+      setWishlist([]);
+      setAddresses([]);
+      return;
+    }
+
+    const userId = String(user.id);
+    const read = (baseKey) => {
+      try {
+        return JSON.parse(localStorage.getItem(`${baseKey}_${userId}`)) || [];
+      } catch {
+        return [];
+      }
+    };
+
+    hydratedUserIdRef.current = userId;
+    setCart(read(CART_STORAGE_KEY));
+    setWishlist(read(WISHLIST_STORAGE_KEY));
+    setAddresses(read(ADDRESS_STORAGE_KEY));
+    setSelectedAddressId("");
+  }, [user?.id]);
 
   useEffect(() => {
-    localStorage.setItem(WISHLIST_STORAGE_KEY, JSON.stringify(wishlist));
-  }, [wishlist]);
+    if (user?.id && hydratedUserIdRef.current === String(user.id)) {
+      localStorage.setItem(`${CART_STORAGE_KEY}_${user.id}`, JSON.stringify(cart));
+    }
+  }, [cart, user?.id]);
 
   useEffect(() => {
-    localStorage.setItem(ADDRESS_STORAGE_KEY, JSON.stringify(addresses));
-  }, [addresses]);
+    if (user?.id && hydratedUserIdRef.current === String(user.id)) {
+      localStorage.setItem(`${WISHLIST_STORAGE_KEY}_${user.id}`, JSON.stringify(wishlist));
+    }
+  }, [wishlist, user?.id]);
+
+  useEffect(() => {
+    if (user?.id && hydratedUserIdRef.current === String(user.id)) {
+      localStorage.setItem(`${ADDRESS_STORAGE_KEY}_${user.id}`, JSON.stringify(addresses));
+    }
+  }, [addresses, user?.id]);
 
   useEffect(() => {
     const loadProducts = async () => {
@@ -172,26 +189,48 @@ function App() {
   };
 
   const addToCart = (product, amount = 1) => {
+    const stock = Number(product.stock ?? 0);
+    if (stock <= 0) {
+      showToast(`${product.name} is out of stock`, "error");
+      return false;
+    }
+
+    let added = false;
     setCart((current) => {
       const existing = current.find((item) => item.id === product.id);
+      const currentQuantity = Number(existing?.quantity || 0);
+      const requestedQuantity = currentQuantity + amount;
+      if (requestedQuantity > stock) {
+        showToast(`Only ${stock} ${product.name} available`, "error");
+        return current;
+      }
+      added = true;
       if (existing) {
         return current.map((item) =>
-          item.id === product.id
-            ? { ...item, quantity: item.quantity + amount }
-            : item
+          item.id === product.id ? { ...item, ...product, quantity: requestedQuantity } : item
         );
       }
       return [...current, { ...product, quantity: amount }];
     });
-    showToast(`${product.name} added to cart`);
+    if (added) showToast(`${product.name} added to cart`);
+    return added;
+  };
+
+  const getStock = (item) => {
+    const product = products.find((entry) => entry.id === item.id);
+    return Number(product?.stock ?? item.stock ?? 0);
   };
 
   const increaseQuantity = (id) => {
-    setCart((current) =>
-      current.map((item) =>
-        item.id === id ? { ...item, quantity: item.quantity + 1 } : item
-      )
-    );
+    setCart((current) => current.map((item) => {
+      if (item.id !== id) return item;
+      const stock = getStock(item);
+      if (item.quantity >= stock) {
+        showToast(`Only ${stock} available`, "error");
+        return item;
+      }
+      return { ...item, quantity: item.quantity + 1 };
+    }));
   };
 
   const decreaseQuantity = (id) => {
@@ -225,14 +264,25 @@ function App() {
       id: loggedInUser?.id,
       name: loggedInUser?.name || "ShopLite User",
       email: loggedInUser?.email || "",
+      role: loggedInUser?.role || "USER",
     };
+    if (loggedInUser?.token) sessionStorage.setItem(TOKEN_STORAGE_KEY, loggedInUser.token);
     localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(safeUser));
     setUser(safeUser);
     setIsLogin(false);
     showToast(`Welcome, ${safeUser.name}`);
   };
 
-  const logout = () => {
+  const logout = async () => {
+    const token = sessionStorage.getItem(TOKEN_STORAGE_KEY);
+    if (token) {
+      try {
+        await fetch("http://localhost:8080/logout", { headers: { Authorization: `Bearer ${token}` } });
+      } catch {
+        // Session cleanup continues locally even if the service is unavailable.
+      }
+    }
+    sessionStorage.removeItem(TOKEN_STORAGE_KEY);
     localStorage.removeItem(USER_STORAGE_KEY);
     setUser(null);
     setShowProfile(false);
@@ -331,9 +381,11 @@ function App() {
     try {
       const response = await fetch("http://localhost:8080/orders", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${sessionStorage.getItem(TOKEN_STORAGE_KEY) || ""}`,
+        },
         body: JSON.stringify({
-          userId: user.id,
           items: cart.map((item) => ({
             productId: item.id,
             quantity: item.quantity,
@@ -369,8 +421,12 @@ function App() {
 
   const addSelectedProduct = () => {
     if (!selectedProduct) return;
-    addToCart(selectedProduct, quantity);
-    setSelectedProduct(null);
+    const stock = Number(selectedProduct.stock ?? 0);
+    if (quantity > stock) {
+      showToast(`Only ${stock} available`, "error");
+      return;
+    }
+    if (addToCart(selectedProduct, quantity)) setSelectedProduct(null);
   };
 
   if (isLogin) {
@@ -380,6 +436,10 @@ function App() {
         onBack={() => setIsLogin(false)}
       />
     );
+  }
+
+  if (showAdmin && user?.role === "ADMIN") {
+    return <Admin user={user} onBack={() => setShowAdmin(false)} />;
   }
 
   if (showOrders) {
@@ -427,6 +487,7 @@ function App() {
                   <button onClick={() => { setShowProfile(false); setShowWishlist(true); }}>Wishlist</button>
                   <button onClick={() => { setShowProfile(false); setShowAddresses(true); }}>Saved Addresses</button>
                   <button onClick={() => { setShowProfile(false); setShowSettings(true); }}>Account Settings</button>
+                  {user.role === "ADMIN" && <button className="admin-menu-button" onClick={() => { setShowProfile(false); setShowAdmin(true); }}>Admin Dashboard</button>}
                   <button className="logout-menu-button" onClick={logout}>Logout</button>
                 </div>
               )}
@@ -665,7 +726,7 @@ function App() {
                         <div className="quantity-controls">
                           <button type="button" onClick={() => decreaseQuantity(item.id)}>−</button>
                           <b>{item.quantity}</b>
-                          <button type="button" onClick={() => increaseQuantity(item.id)}>+</button>
+                          <button type="button" onClick={() => increaseQuantity(item.id)} disabled={Number(item.quantity) >= getStock(item)}>+</button>
                         </div>
                       </div>
                       <div className="cart-item-total"><strong>{money(Number(item.price) * item.quantity)}</strong><button type="button" onClick={() => removeFromCart(item.id)}>Remove</button></div>
@@ -760,7 +821,7 @@ function App() {
               <p className="detail-description">{selectedProduct.description || "A carefully selected ShopLite product for your everyday needs."}</p>
               <p className={Number(selectedProduct.stock ?? 10) > 0 ? "detail-stock" : "detail-stock out"}>{Number(selectedProduct.stock ?? 10) > 0 ? `${selectedProduct.stock ?? 10} items available` : "Out of stock"}</p>
               <div className="detail-actions">
-                <div className="detail-quantity"><button type="button" onClick={() => setQuantity((value) => Math.max(1, value - 1))}>−</button><strong>{quantity}</strong><button type="button" onClick={() => setQuantity((value) => value + 1)}>+</button></div>
+                <div className="detail-quantity"><button type="button" onClick={() => setQuantity((value) => Math.max(1, value - 1))}>−</button><strong>{quantity}</strong><button type="button" onClick={() => setQuantity((value) => Math.min(Number(selectedProduct.stock || 0), value + 1))}>+</button></div>
                 <button className="primary-btn" type="button" disabled={Number(selectedProduct.stock ?? 10) <= 0} onClick={addSelectedProduct}>Add to Cart</button>
                 <button className={`secondary-btn ${wishlist.includes(selectedProduct.id) ? "liked" : ""}`} type="button" onClick={() => toggleWishlist(selectedProduct)}>{wishlist.includes(selectedProduct.id) ? "♥ Wishlisted" : "♡ Wishlist"}</button>
               </div>

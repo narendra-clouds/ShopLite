@@ -60,7 +60,7 @@ function Login({ onLogin, onBack }) {
         return;
       }
 
-      onLogin(data.user);
+      onLogin({ ...data.user, token: data.token });
     } catch (error) {
       console.error("Authentication error:", error);
       setMessageType("error");
@@ -111,6 +111,8 @@ function Login({ onLogin, onBack }) {
             {loading ? "Please wait..." : isRegister ? "Create Account" : "Login"}
           </button>
         </form>
+
+        {!isRegister && <p className="auth-demo-note">Shop owner access is provided through the configured admin account.</p>}
 
         <div className="auth-switch">
           {isRegister ? "Already have an account?" : "Don't have an account?"}

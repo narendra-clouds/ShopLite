@@ -4,9 +4,12 @@ WORKDIR /app
 
 COPY package*.json ./
 
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev \
+    && chown -R node:node /app
 
-COPY server.js ./
+COPY --chown=node:node server.js ./
+
+USER node
 
 EXPOSE 3002
 

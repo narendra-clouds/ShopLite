@@ -7,7 +7,20 @@ services:
     ports:
       - "5173:5173"
     depends_on:
-      - gateway
+      gateway:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:5173').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   gateway:
     build:
@@ -22,11 +35,28 @@ services:
       NOTIFICATION_SERVICE_URL: http://notification-service:3004
       REVIEW_SERVICE_URL: http://review-service:3005
     depends_on:
-      - user-service
-      - product-service
-      - order-service
-      - notification-service
-      - review-service
+      user-service:
+        condition: service_healthy
+      product-service:
+        condition: service_healthy
+      order-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+      review-service:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:8080/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   user-service:
     build:
@@ -34,6 +64,18 @@ services:
     container_name: shoplite-user-service
     expose:
       - "3001"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3001/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
 
   product-service:
     build:
@@ -45,7 +87,20 @@ services:
       USER_SERVICE_URL: http://user-service:3001
       INTERNAL_SERVICE_KEY: shoplite-internal-dev-key
     depends_on:
-      - user-service
+      user-service:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3002/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
 
   order-service:
     build:
@@ -59,9 +114,24 @@ services:
       NOTIFICATION_SERVICE_URL: http://notification-service:3004
       INTERNAL_SERVICE_KEY: shoplite-internal-dev-key
     depends_on:
-      - user-service
-      - product-service
-      - notification-service
+      user-service:
+        condition: service_healthy
+      product-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3003/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
 
   notification-service:
     build:
@@ -69,6 +139,18 @@ services:
     container_name: shoplite-notification-service
     expose:
       - "3004"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3004/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
 
   review-service:
     build:
@@ -79,4 +161,17 @@ services:
     environment:
       USER_SERVICE_URL: http://user-service:3001
     depends_on:
-      - user-service
+      user-service:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3005/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s

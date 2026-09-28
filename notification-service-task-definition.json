@@ -1,0 +1,44 @@
+{
+  "family": "shoplite-notification-service",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::324621154602:role/ShopLiteECSTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "notification-service",
+      "image": "324621154602.dkr.ecr.ap-south-1.amazonaws.com/shoplite/notification-service:v1",
+      "essential": true,
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:3004/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))\""
+        ],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 10
+      },
+      "portMappings": [
+        {
+          "name": "http",
+          "containerPort": 3004,
+          "hostPort": 3004,
+          "protocol": "tcp",
+          "appProtocol": "http"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/shoplite/notification-service",
+          "awslogs-region": "ap-south-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}

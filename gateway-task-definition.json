@@ -1,0 +1,66 @@
+{
+  "family": "shoplite-gateway",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::324621154602:role/ShopLiteECSTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "gateway",
+      "image": "324621154602.dkr.ecr.ap-south-1.amazonaws.com/shoplite/gateway:v1",
+      "essential": true,
+      "environment": [
+        {
+          "name": "USER_SERVICE_URL",
+          "value": "http://user-service:3001"
+        },
+        {
+          "name": "PRODUCT_SERVICE_URL",
+          "value": "http://product-service:3002"
+        },
+        {
+          "name": "ORDER_SERVICE_URL",
+          "value": "http://order-service:3003"
+        },
+        {
+          "name": "NOTIFICATION_SERVICE_URL",
+          "value": "http://notification-service:3004"
+        },
+        {
+          "name": "REVIEW_SERVICE_URL",
+          "value": "http://review-service:3005"
+        }
+      ],
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:8080/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))\""
+        ],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 10
+      },
+      "portMappings": [
+        {
+          "name": "http",
+          "containerPort": 8080,
+          "hostPort": 8080,
+          "protocol": "tcp",
+          "appProtocol": "http"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/shoplite/gateway",
+          "awslogs-region": "ap-south-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "family": "shoplite-user-service",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::324621154602:role/ShopLiteECSTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "user-service",
+      "image": "324621154602.dkr.ecr.ap-south-1.amazonaws.com/shoplite/user-service:v1",
+      "essential": true,
+      "portMappings": [
+        {
+          "name": "http",
+          "containerPort": 3001,
+          "hostPort": 3001,
+          "protocol": "tcp",
+          "appProtocol": "http"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/shoplite/user-service",
+          "awslogs-region": "ap-south-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}

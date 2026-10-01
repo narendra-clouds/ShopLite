@@ -10,7 +10,11 @@
   "containerDefinitions": [
     {
       "name": "frontend",
+<<<<<<< HEAD
       "image": "324621154602.dkr.ecr.ap-south-1.amazonaws.com/shoplite/frontend:v4",
+=======
+      "image": "324621154602.dkr.ecr.ap-south-1.amazonaws.com/shoplite/frontend:v3",
+>>>>>>> c6e873af7b0c4e3b299bafc0d3a9efbe421d0fc2
       "essential": true,
       "portMappings": [
         {

@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { API_BASE_URL } from "../config";
 function Login({ onLogin, onBack }) {
   const [isRegister, setIsRegister] = useState(false);
   const [name, setName] = useState("");
@@ -24,8 +25,8 @@ function Login({ onLogin, onBack }) {
 
     try {
       const url = isRegister
-        ? "http://127.0.0.1:8080/register"
-        : "http://127.0.0.1:8080/login";
+        ? API_BASE_URL + "/register"
+        : API_BASE_URL + "/login";
 
       const body = isRegister
         ? { name: name.trim(), email: email.trim(), password }

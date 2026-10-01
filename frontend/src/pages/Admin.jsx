@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
+import { API_BASE_URL } from "../config";
 const readResponseData = async (response) => {
   const text = await response.text();
   if (!text) return {};
@@ -9,7 +10,7 @@ const readResponseData = async (response) => {
   }
 };
 
-const API = "http://127.0.0.1:8080";
+const API = API_BASE_URL;
 const TOKEN_KEY = "shopliteToken";
 
 const emptyProduct = {

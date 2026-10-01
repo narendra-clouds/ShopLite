@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { API_BASE_URL } from "../config";
 const readResponseData = async (response) => {
   const text = await response.text();
   if (!text) return {};
@@ -27,7 +28,7 @@ function Orders({ user, onBack, onReviewProduct }) {
       try {
         setLoading(true);
         setError("");
-        const ordersResponse = await fetch("http://127.0.0.1:8080/orders", {
+        const ordersResponse = await fetch(API_BASE_URL + "/orders", {
           headers: { Authorization: `Bearer ${sessionStorage.getItem("shopliteToken") || ""}` },
         });
         const ordersData = await readResponseData(ordersResponse);
@@ -38,7 +39,7 @@ function Orders({ user, onBack, onReviewProduct }) {
         // Review history is optional for the Orders page. If Review Service is unavailable,
         // orders should still load normally.
         try {
-          const reviewsResponse = await fetch("http://127.0.0.1:8080/reviews/user", {
+          const reviewsResponse = await fetch(API_BASE_URL + "/reviews/user", {
             headers: { Authorization: `Bearer ${sessionStorage.getItem("shopliteToken") || ""}` },
           });
           const reviewsData = await readResponseData(reviewsResponse);
@@ -94,7 +95,7 @@ function Orders({ user, onBack, onReviewProduct }) {
     if (!confirmed) return;
     try {
       setActionMessage("");
-      const response = await fetch(`http://127.0.0.1:8080/orders/${order.id}/cancel`, {
+      const response = await fetch(`${API_BASE_URL}/orders/${order.id}/cancel`, {
         method: "PATCH",
         headers: { Authorization: `Bearer ${sessionStorage.getItem("shopliteToken") || ""}` },
       });

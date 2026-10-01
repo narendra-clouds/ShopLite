@@ -1,0 +1,62 @@
+{
+  "family": "shoplite-order-service",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::324621154602:role/ShopLiteECSTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "order-service",
+      "image": "324621154602.dkr.ecr.ap-south-1.amazonaws.com/shoplite/order-service:v1",
+      "essential": true,
+      "environment": [
+        {
+          "name": "USER_SERVICE_URL",
+          "value": "http://user-service:3001"
+        },
+        {
+          "name": "PRODUCT_SERVICE_URL",
+          "value": "http://product-service:3002"
+        },
+        {
+          "name": "NOTIFICATION_SERVICE_URL",
+          "value": "http://notification-service:3004"
+        },
+        {
+          "name": "INTERNAL_SERVICE_KEY",
+          "value": "shoplite-internal-dev-key"
+        }
+      ],
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:3003/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))\""
+        ],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 10
+      },
+      "portMappings": [
+        {
+          "name": "http",
+          "containerPort": 3003,
+          "hostPort": 3003,
+          "protocol": "tcp",
+          "appProtocol": "http"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/shoplite/order-service",
+          "awslogs-region": "ap-south-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}

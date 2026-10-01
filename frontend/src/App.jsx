@@ -4,6 +4,7 @@ import Orders from "./pages/Orders";
 import Admin from "./pages/Admin";
 import "./App.css";
 
+import { API_BASE_URL } from "./config";
 const USER_STORAGE_KEY = "shopliteUser";
 const CART_STORAGE_KEY = "shopliteCart";
 const WISHLIST_STORAGE_KEY = "shopliteWishlist";
@@ -126,7 +127,7 @@ function App() {
       try {
         setLoading(true);
         setError("");
-        const response = await fetch("http://127.0.0.1:8080/products");
+        const response = await fetch(API_BASE_URL + "/products");
         if (!response.ok) throw new Error("Product service unavailable");
         const data = await readResponseData(response);
         setProducts(Array.isArray(data.products) ? data.products : []);
@@ -292,7 +293,7 @@ function App() {
     const token = sessionStorage.getItem(TOKEN_STORAGE_KEY);
     if (token) {
       try {
-        await fetch("http://127.0.0.1:8080/logout", { headers: { Authorization: `Bearer ${token}` } });
+        await fetch(API_BASE_URL + "/logout", { headers: { Authorization: `Bearer ${token}` } });
       } catch {
         // Session cleanup continues locally even if the service is unavailable.
       }
@@ -394,7 +395,7 @@ function App() {
     setPlacingOrder(true);
     setOrderError("");
     try {
-      const response = await fetch("http://127.0.0.1:8080/orders", {
+      const response = await fetch(API_BASE_URL + "/orders", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -436,7 +437,7 @@ function App() {
     setReviewAverage(0);
     setReviewText("");
     try {
-      const response = await fetch(`http://127.0.0.1:8080/reviews/${product.id}`);
+      const response = await fetch(`${API_BASE_URL}/reviews/${product.id}`);
       const data = await readResponseData(response);
       if (response.ok) {
         setReviews(Array.isArray(data.reviews) ? data.reviews : []);
@@ -450,7 +451,7 @@ function App() {
   const submitReview = async () => {
     if (!user) { setIsLogin(true); setSelectedProduct(null); return; }
     try {
-      const response = await fetch("http://127.0.0.1:8080/reviews", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionStorage.getItem(TOKEN_STORAGE_KEY) || ""}` }, body: JSON.stringify({ productId: selectedProduct.id, rating: reviewRating, comment: reviewText }) });
+      const response = await fetch(API_BASE_URL + "/reviews", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionStorage.getItem(TOKEN_STORAGE_KEY) || ""}` }, body: JSON.stringify({ productId: selectedProduct.id, rating: reviewRating, comment: reviewText }) });
       const data = await readResponseData(response);
       if (!response.ok) throw new Error(data.message || `Unable to add review (HTTP ${response.status})`);
       setReviewText(""); setReviews((current) => [...current, data.review]);
